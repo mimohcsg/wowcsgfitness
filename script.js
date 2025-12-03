@@ -6,6 +6,18 @@ class StepathonApp {
         this.participants = this.loadParticipants();
         this.stepEntries = this.loadStepEntries();
         this.adminCredentials = { username: 'admin', password: 'admin123' }; // Default admin credentials
+        
+        // Step Counter Properties
+        this.stepCounter = {
+            isRunning: false,
+            stepCount: 0,
+            lastAcceleration: { x: 0, y: 0, z: 0 },
+            threshold: 0.5, // Sensitivity threshold
+            stepHistory: [],
+            startTime: null,
+            permissionGranted: false
+        };
+        
         this.init();
     }
 
@@ -101,6 +113,56 @@ class StepathonApp {
                 this.filterAdminEntries(filter);
             });
         });
+
+        // Step Counter Event Listeners
+        const startStepCounterBtn = document.getElementById('startStepCounterBtn');
+        if (startStepCounterBtn) {
+            startStepCounterBtn.addEventListener('click', () => {
+                this.showStepCounterPanel();
+            });
+        }
+
+        const closeStepCounterBtn = document.getElementById('closeStepCounterBtn');
+        if (closeStepCounterBtn) {
+            closeStepCounterBtn.addEventListener('click', () => {
+                this.hideStepCounterPanel();
+            });
+        }
+
+        const startCounterBtn = document.getElementById('startCounterBtn');
+        if (startCounterBtn) {
+            startCounterBtn.addEventListener('click', () => {
+                this.startStepCounter();
+            });
+        }
+
+        const stopCounterBtn = document.getElementById('stopCounterBtn');
+        if (stopCounterBtn) {
+            stopCounterBtn.addEventListener('click', () => {
+                this.stopStepCounter();
+            });
+        }
+
+        const resetCounterBtn = document.getElementById('resetCounterBtn');
+        if (resetCounterBtn) {
+            resetCounterBtn.addEventListener('click', () => {
+                this.resetStepCounter();
+            });
+        }
+
+        const useCounterStepsBtn = document.getElementById('useCounterStepsBtn');
+        if (useCounterStepsBtn) {
+            useCounterStepsBtn.addEventListener('click', () => {
+                this.useCounterSteps();
+            });
+        }
+
+        const saveCounterStepsBtn = document.getElementById('saveCounterStepsBtn');
+        if (saveCounterStepsBtn) {
+            saveCounterStepsBtn.addEventListener('click', () => {
+                this.saveCounterStepsDirectly();
+            });
+        }
 
         // Method tabs
         document.querySelectorAll('.method-tab').forEach(tab => {
@@ -1861,6 +1923,357 @@ WoW-CSG Stepathon Team`,
     loadParticipants() {
         const saved = localStorage.getItem('participants');
         return saved ? JSON.parse(saved) : [];
+    }
+
+    // Step Counter Functions
+    showStepCounterPanel() {
+        const panel = document.getElementById('stepCounterPanel');
+        if (panel) {
+            panel.style.display = 'block';
+            this.requestMotionPermission();
+        }
+    }
+
+    hideStepCounterPanel() {
+        const panel = document.getElementById('stepCounterPanel');
+        if (panel) {
+            panel.style.display = 'none';
+            if (this.stepCounter.isRunning) {
+                this.stopStepCounter();
+            }
+        }
+    }
+
+    async requestMotionPermission() {
+        // Request device motion permission (iOS 13+)
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+            try {
+                const permission = await DeviceMotionEvent.requestPermission();
+                this.stepCounter.permissionGranted = permission === 'granted';
+                if (!this.stepCounter.permissionGranted) {
+                    this.updateCounterStatus('Permission denied. Please enable motion access in settings.');
+                }
+            } catch (error) {
+                console.error('Error requesting motion permission:', error);
+                this.updateCounterStatus('Unable to access motion sensors.');
+            }
+        } else {
+            // Android and older iOS - permission not required
+            this.stepCounter.permissionGranted = true;
+        }
+    }
+
+    startStepCounter() {
+        if (!this.stepCounter.permissionGranted && typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+            this.requestMotionPermission().then(() => {
+                if (this.stepCounter.permissionGranted) {
+                    this.initializeStepCounter();
+                }
+            });
+            return;
+        }
+
+        this.initializeStepCounter();
+    }
+
+    initializeStepCounter() {
+        if (this.stepCounter.isRunning) return;
+
+        this.stepCounter.isRunning = true;
+        this.stepCounter.startTime = Date.now();
+        this.stepCounter.lastAcceleration = { x: 0, y: 0, z: 0 };
+        this.stepCounter.stepHistory = [];
+
+        // Check if device supports motion events
+        if (typeof DeviceMotionEvent === 'undefined') {
+            this.updateCounterStatus('Device motion not supported. Please use manual entry.');
+            this.stepCounter.isRunning = false;
+            return;
+        }
+
+        // Store bound function for cleanup
+        this.boundHandleDeviceMotion = this.handleDeviceMotion.bind(this);
+        // Listen for device motion
+        window.addEventListener('devicemotion', this.boundHandleDeviceMotion);
+
+        // Update UI
+        document.getElementById('startCounterBtn').style.display = 'none';
+        document.getElementById('stopCounterBtn').style.display = 'inline-block';
+        document.getElementById('useCounterStepsBtn').style.display = 'none';
+        document.getElementById('saveCounterStepsBtn').style.display = 'none';
+        this.updateCounterStatus('Counting steps... Walk naturally!');
+
+        // Show notification
+        this.showCounterNotification('Step counter started! Start walking.');
+    }
+
+    handleDeviceMotion(event) {
+        if (!this.stepCounter.isRunning) return;
+
+        const acceleration = event.accelerationIncludingGravity || event.acceleration;
+        
+        if (!acceleration) return;
+
+        const currentAccel = {
+            x: acceleration.x || 0,
+            y: acceleration.y || 0,
+            z: acceleration.z || 0
+        };
+
+        // Calculate magnitude of acceleration change
+        const deltaX = Math.abs(currentAccel.x - this.stepCounter.lastAcceleration.x);
+        const deltaY = Math.abs(currentAccel.y - this.stepCounter.lastAcceleration.y);
+        const deltaZ = Math.abs(currentAccel.z - this.stepCounter.lastAcceleration.z);
+        
+        const magnitude = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+
+        // Detect step (threshold-based algorithm)
+        if (magnitude > this.stepCounter.threshold) {
+            // Check if enough time has passed since last step (prevent double counting)
+            const now = Date.now();
+            const timeSinceLastStep = this.stepCounter.stepHistory.length > 0 
+                ? now - this.stepCounter.stepHistory[this.stepCounter.stepHistory.length - 1]
+                : 1000;
+
+            // Minimum 300ms between steps (prevents false positives)
+            if (timeSinceLastStep > 300) {
+                this.stepCounter.stepCount++;
+                this.stepCounter.stepHistory.push(now);
+                
+                // Keep only last 10 steps for calculation
+                if (this.stepCounter.stepHistory.length > 10) {
+                    this.stepCounter.stepHistory.shift();
+                }
+
+                this.updateStepCounterDisplay();
+                this.animateStepCounter();
+            }
+        }
+
+        this.stepCounter.lastAcceleration = currentAccel;
+    }
+
+    stopStepCounter() {
+        if (!this.stepCounter.isRunning) return;
+
+        this.stepCounter.isRunning = false;
+        if (this.boundHandleDeviceMotion) {
+            window.removeEventListener('devicemotion', this.boundHandleDeviceMotion);
+        }
+
+        // Update UI
+        document.getElementById('startCounterBtn').style.display = 'inline-block';
+        document.getElementById('stopCounterBtn').style.display = 'none';
+        
+        if (this.stepCounter.stepCount > 0) {
+            document.getElementById('useCounterStepsBtn').style.display = 'inline-block';
+            document.getElementById('saveCounterStepsBtn').style.display = 'inline-block';
+        }
+
+        const duration = Math.round((Date.now() - this.stepCounter.startTime) / 1000);
+        this.updateCounterStatus(`Stopped. Counted ${this.stepCounter.stepCount} steps in ${duration} seconds. You can save these steps now!`);
+        
+        this.showCounterNotification(`Step counting stopped. Total: ${this.stepCounter.stepCount} steps`);
+    }
+
+    resetStepCounter() {
+        this.stepCounter.stepCount = 0;
+        this.stepCounter.stepHistory = [];
+        this.stepCounter.startTime = null;
+        this.updateStepCounterDisplay();
+        this.updateCounterStatus('Counter reset. Ready to start.');
+        document.getElementById('useCounterStepsBtn').style.display = 'none';
+        document.getElementById('saveCounterStepsBtn').style.display = 'none';
+    }
+
+    updateStepCounterDisplay() {
+        const display = document.getElementById('liveStepCount');
+        if (display) {
+            display.textContent = this.stepCounter.stepCount.toLocaleString();
+        }
+    }
+
+    animateStepCounter() {
+        const display = document.getElementById('liveStepCount');
+        if (display) {
+            display.style.transform = 'scale(1.1)';
+            setTimeout(() => {
+                display.style.transform = 'scale(1)';
+            }, 150);
+        }
+    }
+
+    updateCounterStatus(message) {
+        const status = document.getElementById('counterStatus');
+        if (status) {
+            status.textContent = message;
+        }
+    }
+
+    useCounterSteps() {
+        if (this.stepCounter.stepCount > 0) {
+            document.getElementById('stepsInput').value = this.stepCounter.stepCount;
+            this.hideStepCounterPanel();
+            this.showCounterNotification(`Added ${this.stepCounter.stepCount} steps to form! Please upload screenshot to save.`);
+            // Don't reset counter - user might want to save directly
+        }
+    }
+
+    async saveCounterStepsDirectly() {
+        if (!this.currentUser) {
+            alert('Please login first!');
+            return;
+        }
+
+        const steps = this.stepCounter.stepCount;
+        if (steps <= 0) {
+            alert('No steps to save! Please count some steps first.');
+            return;
+        }
+
+        // Check for screenshot (still required for validation)
+        const manualScreenshot = document.getElementById('manualScreenshot');
+        let screenshotData = null;
+
+        if (manualScreenshot && manualScreenshot.files.length > 0) {
+            const file = manualScreenshot.files[0];
+            screenshotData = await this.convertFileToBase64(file);
+        } else {
+            // Prompt user to upload screenshot
+            const proceed = confirm(`You have counted ${steps.toLocaleString()} steps!\n\nTo save these steps, you need to upload a screenshot for validation.\n\nClick OK to select a screenshot, or Cancel to use steps in the form.`);
+            
+            if (!proceed) {
+                // User cancelled - just use steps in form
+                this.useCounterSteps();
+                return;
+            }
+
+            // Trigger file input
+            manualScreenshot.click();
+            
+            // Wait for file selection
+            return new Promise((resolve) => {
+                const handleFileSelect = async () => {
+                    if (manualScreenshot.files.length > 0) {
+                        const file = manualScreenshot.files[0];
+                        screenshotData = await this.convertFileToBase64(file);
+                        manualScreenshot.removeEventListener('change', handleFileSelect);
+                        await this.saveStepsWithScreenshot(steps, screenshotData);
+                        resolve();
+                    }
+                };
+                manualScreenshot.addEventListener('change', handleFileSelect);
+            });
+        }
+
+        // If screenshot already exists, save directly
+        if (screenshotData) {
+            await this.saveStepsWithScreenshot(steps, screenshotData);
+        }
+    }
+
+    async saveStepsWithScreenshot(steps, screenshotData) {
+        const today = new Date().toDateString();
+        const currentSteps = this.currentUser.dailySteps[today] || 0;
+        this.currentUser.dailySteps[today] = currentSteps + steps;
+        this.currentUser.totalSteps = (this.currentUser.totalSteps || 0) + steps;
+        this.currentUser.lastActivity = new Date().toISOString();
+
+        // Create step entry for admin validation
+        const entryId = `ENTRY_${Date.now()}`;
+        const stepEntry = {
+            id: entryId,
+            userId: this.currentUser.id,
+            userName: this.currentUser.name,
+            userEmail: this.currentUser.email,
+            steps: steps,
+            screenshot: screenshotData,
+            date: new Date().toISOString(),
+            status: 'pending',
+            validatedBy: null,
+            validatedAt: null,
+            notes: null,
+            source: 'step-counter' // Mark as from step counter
+        };
+
+        this.stepEntries.unshift(stepEntry);
+        this.saveStepEntries();
+
+        // Add activity
+        this.currentUser.activities.unshift({
+            date: new Date().toISOString(),
+            steps: steps,
+            message: `Counted ${steps.toLocaleString()} steps using step counter (Pending validation)`,
+            entryId: entryId
+        });
+
+        // Keep only last 20 activities
+        if (this.currentUser.activities.length > 20) {
+            this.currentUser.activities = this.currentUser.activities.slice(0, 20);
+        }
+
+        // Update streak
+        this.currentUser.streak = this.calculateStreak(this.currentUser);
+
+        // Save
+        const index = this.participants.findIndex(p => p.name === this.currentUser.name);
+        if (index !== -1) {
+            this.participants[index] = this.currentUser;
+        }
+
+        localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+        localStorage.setItem('participants', JSON.stringify(this.participants));
+
+        // Reset step counter
+        this.resetStepCounter();
+        this.hideStepCounterPanel();
+        
+        // Clear screenshot input if it was used
+        if (document.getElementById('manualScreenshot')) {
+            document.getElementById('manualScreenshot').value = '';
+            document.getElementById('manualImagePreview').style.display = 'none';
+            document.getElementById('manualUploadArea').style.display = 'block';
+        }
+        
+        // Show success
+        this.showCounterNotification(`✅ ${steps.toLocaleString()} steps saved! Leaderboard updated.`);
+        
+        // Update dashboard and leaderboard immediately
+        this.updateDashboard();
+        this.updateLeaderboard();
+        
+        // Show success message
+        setTimeout(() => {
+            alert(`Steps saved successfully! 🎉\n\n${steps.toLocaleString()} steps have been added to your account.\n\nYour leaderboard position has been updated.\n\nNote: Entry is pending admin validation. Once approved, it will be confirmed in the system.`);
+        }, 500);
+    }
+
+    showCounterNotification(message) {
+        // Create temporary notification
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #003366 0%, #001a33 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 51, 102, 0.4);
+            z-index: 1000;
+            animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-out 2.7s;
+            font-weight: 600;
+            font-size: 0.95rem;
+            max-width: 90%;
+            text-align: center;
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
     }
 }
 

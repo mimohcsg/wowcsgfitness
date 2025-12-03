@@ -226,8 +226,49 @@
                     <form id="addStepsForm" class="steps-form active">
                         <div class="form-group">
                             <label for="stepsInput">Steps <span class="required">*</span></label>
-                            <input type="number" id="stepsInput" placeholder="Enter steps" min="0" required>
+                            <div class="steps-input-wrapper">
+                                <input type="number" id="stepsInput" placeholder="Enter steps" min="0" required>
+                                <button type="button" class="btn btn-step-counter" id="startStepCounterBtn" title="Start step counter">
+                                    👣 Count Steps
+                                </button>
+                            </div>
                         </div>
+                        
+                        <!-- Step Counter Interface -->
+                        <div id="stepCounterPanel" class="step-counter-panel" style="display: none;">
+                            <div class="step-counter-header">
+                                <h4>🚶‍♂️ Live Step Counter</h4>
+                                <button type="button" class="btn-close-counter" id="closeStepCounterBtn">×</button>
+                            </div>
+                            <div class="step-counter-display">
+                                <div class="step-counter-value" id="liveStepCount">0</div>
+                                <div class="step-counter-label">Steps</div>
+                            </div>
+                            <div class="step-counter-controls">
+                                <button type="button" class="btn btn-counter-start" id="startCounterBtn">
+                                    ▶️ Start Counting
+                                </button>
+                                <button type="button" class="btn btn-counter-stop" id="stopCounterBtn" style="display: none;">
+                                    ⏸️ Stop Counting
+                                </button>
+                                <button type="button" class="btn btn-counter-reset" id="resetCounterBtn">
+                                    🔄 Reset
+                                </button>
+                            </div>
+                            <div class="step-counter-info">
+                                <p class="counter-status" id="counterStatus">Ready to start</p>
+                                <p class="counter-hint">Hold your phone while walking to count steps accurately</p>
+                            </div>
+                            <div class="step-counter-actions">
+                                <button type="button" class="btn btn-primary" id="useCounterStepsBtn" style="display: none;">
+                                    ✅ Use These Steps
+                                </button>
+                                <button type="button" class="btn btn-save-steps" id="saveCounterStepsBtn" style="display: none;">
+                                    💾 Save Steps & Update Leaderboard
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="form-group">
                             <label for="manualScreenshot">Screenshot <span class="required">*</span></label>
                             <div class="upload-area-small" id="manualUploadArea">
