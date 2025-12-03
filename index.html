@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>WoW-CSG Stepathon Challenge 2025</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-background">
+                <div class="animated-shapes">
+                    <div class="shape shape-1"></div>
+                    <div class="shape shape-2"></div>
+                    <div class="shape shape-3"></div>
+                </div>
+            </div>
+            <div class="logo-section">
+                <div class="csg-logo">
+                    <img src="CSG_Logo_K_outline.jpg" alt="CSG Logo" class="csg-logo-img">
+                </div>
+                <h1 class="animated-title">WoW-CSG Stepathon Challenge 2025</h1>
+            </div>
+            <p class="subtitle">Step Your Way to Victory! 🏆</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Challenge Info Card -->
+            <div class="card info-card animated-card">
+                <div class="card-header-icon">📅</div>
+                <h2>Challenge Details</h2>
+                <div class="info-grid">
+                    <div class="info-item pulse-animation">
+                        <div class="info-icon">⏱️</div>
+                        <span class="label">Duration:</span>
+                        <span class="value">30 Days</span>
+                    </div>
+                    <div class="info-item pulse-animation" style="animation-delay: 0.1s;">
+                        <div class="info-icon">🚀</div>
+                        <span class="label">Start Date:</span>
+                        <span class="value" id="startDate">Dec 1, 2025</span>
+                    </div>
+                    <div class="info-item pulse-animation" style="animation-delay: 0.2s;">
+                        <div class="info-icon">🎯</div>
+                        <span class="label">End Date:</span>
+                        <span class="value" id="endDate">Dec 30, 2025</span>
+                    </div>
+                    <div class="info-item pulse-animation" style="animation-delay: 0.3s;">
+                        <div class="info-icon">🏁</div>
+                        <span class="label">Daily Goal:</span>
+                        <span class="value">10,000 steps</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Login Section -->
+            <div class="card" id="loginCard">
+                <div class="login-tabs">
+                    <button type="button" class="login-tab active" data-tab="user">👤 User Registration</button>
+                    <button type="button" class="login-tab" data-tab="user-login">🔑 User Login</button>
+                    <button type="button" class="login-tab" data-tab="admin">🔐 Admin Login</button>
+                </div>
+
+                <!-- User Registration Form -->
+                <div id="userLoginForm" class="login-form active">
+                    <h2>Join the Challenge</h2>
+                    <form id="registrationForm">
+                        <div class="form-group">
+                            <label for="employeeName">Full Name <span class="required">*</span></label>
+                            <input type="text" id="employeeName" placeholder="Enter your full name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="employeeId">Employee ID <span class="required">*</span></label>
+                            <input type="text" id="employeeId" placeholder="Enter your Employee ID" required>
+                            <small class="form-hint">Each Employee ID can only be registered once.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="emailId">Email ID <span class="required">*</span></label>
+                            <input type="email" id="emailId" placeholder="Enter your email address" required>
+                            <small class="form-hint">Your password will be sent to this email. Each email can only be used once.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="username">Username <span class="required">*</span></label>
+                            <input type="text" id="username" placeholder="Choose a username" required minlength="3">
+                            <small class="form-hint">Minimum 3 characters. Must be unique.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password <span class="required">*</span></label>
+                            <input type="password" id="password" placeholder="Create a password" required minlength="6">
+                            <small class="form-hint">Minimum 6 characters</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmPassword">Confirm Password <span class="required">*</span></label>
+                            <input type="password" id="confirmPassword" placeholder="Confirm your password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Create Account & Join Challenge</button>
+                    </form>
+                </div>
+
+                <!-- User Login Form (for existing users) -->
+                <div id="userLoginFormExisting" class="login-form" style="display: none;">
+                    <h2>Login to Challenge</h2>
+                    <form id="loginForm">
+                        <div class="form-group">
+                            <label for="loginUsername">Username <span class="required">*</span></label>
+                            <input type="text" id="loginUsername" placeholder="Enter your username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Password <span class="required">*</span></label>
+                            <input type="password" id="loginPassword" placeholder="Enter your password" required>
+                        </div>
+                        <div class="form-options">
+                            <a href="#" id="forgotPasswordLink" class="forgot-password">Forgot Password?</a>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Login</button>
+                        <div class="switch-form">
+                            <p>Don't have an account? <a href="#" id="showRegistrationLink">Register here</a></p>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Admin Login Form -->
+                <div id="adminLoginForm" class="login-form">
+                    <h2>Admin Access</h2>
+                    <form id="adminForm">
+                        <div class="form-group">
+                            <label for="adminUsername">Username <span class="required">*</span></label>
+                            <input type="text" id="adminUsername" placeholder="Enter admin username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="adminPassword">Password <span class="required">*</span></label>
+                            <input type="password" id="adminPassword" placeholder="Enter admin password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Login as Admin</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Dashboard Section -->
+            <div class="card dashboard" id="dashboardCard" style="display: none;">
+                <div class="dashboard-header">
+                    <h2>Welcome, <span id="userName"></span>! 👋</h2>
+                    <button class="btn btn-secondary" id="logoutBtn">Logout</button>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card stat-card-animated" data-stat="today">
+                        <div class="stat-card-glow"></div>
+                        <div class="stat-icon">👣</div>
+                        <div class="stat-value" id="todaySteps">0</div>
+                        <div class="stat-label">Today's Steps</div>
+                        <div class="stat-trend">↑ Real-time tracking</div>
+                    </div>
+                    <div class="stat-card stat-card-animated" data-stat="total" style="animation-delay: 0.1s;">
+                        <div class="stat-card-glow"></div>
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-value" id="totalSteps">0</div>
+                        <div class="stat-label">Total Steps</div>
+                        <div class="stat-trend">📈 Cumulative</div>
+                    </div>
+                    <div class="stat-card stat-card-animated" data-stat="streak" style="animation-delay: 0.2s;">
+                        <div class="stat-card-glow"></div>
+                        <div class="stat-icon">🔥</div>
+                        <div class="stat-value" id="streak">0</div>
+                        <div class="stat-label">Day Streak</div>
+                        <div class="stat-trend">Keep it going!</div>
+                    </div>
+                    <div class="stat-card stat-card-animated" data-stat="rank" style="animation-delay: 0.3s;">
+                        <div class="stat-card-glow"></div>
+                        <div class="stat-icon">🏆</div>
+                        <div class="stat-value" id="rank">-</div>
+                        <div class="stat-label">Your Rank</div>
+                        <div class="stat-trend">Leaderboard position</div>
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="progress-section">
+                    <div class="progress-header">
+                        <h3>Daily Goal Progress</h3>
+                        <span class="progress-badge" id="progressBadge">0%</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progressBar">
+                            <div class="progress-fill" id="progressFill"></div>
+                            <span class="progress-text" id="progressText">0%</span>
+                        </div>
+                    </div>
+                    <div class="progress-details">
+                        <div class="progress-item">
+                            <span class="progress-label">Goal:</span>
+                            <span class="progress-value">10,000 steps</span>
+                        </div>
+                        <div class="progress-item">
+                            <span class="progress-label">Remaining:</span>
+                            <span class="progress-value highlight" id="remainingSteps">10,000</span>
+                        </div>
+                    </div>
+                    <!-- Motivation Messages -->
+                    <div class="motivation-messages" id="motivationMessages">
+                        <div class="motivation-badge" id="motivationBadge" style="display: none;">
+                            <span class="badge-icon">🎯</span>
+                            <span class="badge-text" id="badgeText"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add Steps Form -->
+                <div class="add-steps-section">
+                    <h3>➕ Add Your Steps</h3>
+                    
+                    <!-- Manual Entry -->
+                    <div class="input-method-tabs">
+                        <button type="button" class="method-tab active" data-method="manual">Manual Entry</button>
+                        <button type="button" class="method-tab" data-method="screenshot">📷 From Screenshot</button>
+                    </div>
+
+                    <!-- Manual Entry Form -->
+                    <form id="addStepsForm" class="steps-form active">
+                        <div class="form-group">
+                            <label for="stepsInput">Steps <span class="required">*</span></label>
+                            <input type="number" id="stepsInput" placeholder="Enter steps" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="manualScreenshot">Screenshot <span class="required">*</span></label>
+                            <div class="upload-area-small" id="manualUploadArea">
+                                <input type="file" id="manualScreenshot" accept="image/*" style="display: none;" required>
+                                <div class="upload-content-small">
+                                    <div class="upload-icon-small">📷</div>
+                                    <p class="upload-text-small">Click to upload screenshot</p>
+                                    <p class="upload-hint-small">Required for manual entry validation</p>
+                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('manualScreenshot').click()">
+                                        Choose Screenshot
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="manualImagePreview" class="image-preview-small" style="display: none;">
+                                <img id="manualPreviewImage" src="" alt="Screenshot preview">
+                                <button type="button" class="btn btn-secondary" id="removeManualImageBtn">Remove</button>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Steps</button>
+                    </form>
+
+                    <!-- Screenshot Upload Form -->
+                    <div id="screenshotForm" class="steps-form" style="display: none;">
+                        <div class="upload-area" id="uploadArea">
+                            <input type="file" id="screenshotInput" accept="image/*" style="display: none;">
+                            <div class="upload-content">
+                                <div class="upload-icon">📷</div>
+                                <p class="upload-text">Click or drag screenshot here</p>
+                                <p class="upload-hint">Supports: Fitbit, Apple Health, Google Fit, Samsung Health, etc.</p>
+                                <button type="button" class="btn btn-secondary" onclick="document.getElementById('screenshotInput').click()">
+                                    Choose Screenshot
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Image Preview -->
+                        <div id="imagePreview" class="image-preview" style="display: none;">
+                            <img id="previewImage" src="" alt="Screenshot preview">
+                            <button type="button" class="btn btn-secondary" id="removeImageBtn">Remove</button>
+                        </div>
+
+                        <!-- OCR Processing -->
+                        <div id="ocrProcessing" class="ocr-processing" style="display: none;">
+                            <div class="spinner"></div>
+                            <p>Analyzing screenshot... Please wait</p>
+                        </div>
+
+                        <!-- Extracted Steps Result -->
+                        <div id="extractedResult" class="extracted-result" style="display: none;">
+                            <div class="result-card">
+                                <h4>📊 Detected Steps</h4>
+                                <div class="extracted-steps">
+                                    <span class="steps-value" id="extractedSteps">0</span>
+                                    <span class="steps-label">steps</span>
+                                </div>
+                                <div class="result-actions">
+                                    <button type="button" class="btn btn-secondary" id="editStepsBtn">Edit</button>
+                                    <button type="button" class="btn btn-primary" id="confirmStepsBtn">Confirm & Add</button>
+                                </div>
+                                <div id="editStepsInput" class="edit-input" style="display: none;">
+                                    <input type="number" id="editedSteps" placeholder="Enter correct steps" min="0">
+                                    <button type="button" class="btn btn-primary" id="saveEditedStepsBtn">Save</button>
+                                </div>
+                                <details class="debug-info" style="margin-top: 15px; text-align: left;">
+                                    <summary style="cursor: pointer; font-size: 0.85rem; opacity: 0.8;">🔍 Debug Info (Click to view OCR text)</summary>
+                                    <div style="margin-top: 10px; font-size: 0.75rem; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; max-height: 150px; overflow-y: auto;">
+                                        <strong>OCR Detected Text:</strong>
+                                        <pre id="debugOcrText" style="white-space: pre-wrap; word-break: break-all; margin-top: 5px; font-size: 0.7rem;"></pre>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Leaderboard Section -->
+            <div class="card leaderboard-card">
+                <h2>🏅 Leaderboard</h2>
+                <div class="leaderboard-filters">
+                    <button class="filter-btn active" data-filter="total">Total Steps</button>
+                    <button class="filter-btn" data-filter="today">Today</button>
+                    <button class="filter-btn" data-filter="avg">Average</button>
+                </div>
+                <div class="leaderboard-list" id="leaderboardList">
+                    <div class="leaderboard-item">
+                        <div class="rank">1</div>
+                        <div class="name">No participants yet</div>
+                        <div class="steps">0 steps</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fitness Motivation Section -->
+            <div class="card motivation-card">
+                <h2>💪 Daily Motivation</h2>
+                <div class="motivation-content">
+                    <div class="motivation-icon">🏃‍♂️</div>
+                    <p class="motivation-text" id="dailyMotivation">"The only bad workout is the one that didn't happen!"</p>
+                    <button class="btn btn-secondary" id="refreshMotivationBtn">Get New Motivation</button>
+                </div>
+                <div class="fitness-tips">
+                    <h3>💡 Fitness Tips</h3>
+                    <ul class="tips-list" id="fitnessTips">
+                        <li>Take the stairs instead of the elevator</li>
+                        <li>Park farther away to add extra steps</li>
+                        <li>Take short walking breaks every hour</li>
+                        <li>Walk during phone calls</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="card activity-card">
+                <h2>📝 Recent Activity</h2>
+                <div class="activity-list" id="activityList">
+                    <p class="no-activity">No activity yet. Start walking! 🚶‍♂️</p>
+                </div>
+            </div>
+
+            <!-- Admin Dashboard -->
+            <div class="card admin-dashboard" id="adminDashboard" style="display: none;">
+                <div class="admin-header">
+                    <h2>🔐 Admin Dashboard</h2>
+                    <button class="btn btn-secondary" id="adminLogoutBtn">Logout</button>
+                </div>
+                
+                <div class="admin-stats">
+                    <div class="admin-stat-card">
+                        <div class="admin-stat-value" id="pendingCount">0</div>
+                        <div class="admin-stat-label">Pending Validations</div>
+                    </div>
+                    <div class="admin-stat-card">
+                        <div class="admin-stat-value" id="approvedCount">0</div>
+                        <div class="admin-stat-label">Approved Entries</div>
+                    </div>
+                    <div class="admin-stat-card">
+                        <div class="admin-stat-value" id="rejectedCount">0</div>
+                        <div class="admin-stat-label">Rejected Entries</div>
+                    </div>
+                </div>
+
+                <div class="admin-filters">
+                    <button class="filter-btn active" data-filter="pending">Pending</button>
+                    <button class="filter-btn" data-filter="approved">Approved</button>
+                    <button class="filter-btn" data-filter="rejected">Rejected</button>
+                    <button class="filter-btn" data-filter="all">All</button>
+                </div>
+
+                <div class="validation-list" id="validationList">
+                    <p class="no-entries">No entries to validate</p>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>© 2025 CSG International | WoW-CSG Stepathon Challenge | Let's get moving together! 💪</p>
+            <p class="footer-subtext">Powered by CSG - Connecting People, Enabling Possibilities</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
