@@ -4,8 +4,24 @@ class StepathonApp {
         this.currentUser = null;
         this.isAdmin = false;
         this.participants = this.loadParticipants();
+        
+        // Initialize stepEntries - ensure it's always an array
         this.stepEntries = this.loadStepEntries();
+        if (!Array.isArray(this.stepEntries)) {
+            console.warn('stepEntries was not an array, initializing as empty array');
+            this.stepEntries = [];
+            this.saveStepEntries(); // Save empty array to localStorage
+        }
+        console.log('StepathonApp initialized - stepEntries count:', this.stepEntries.length);
+        
         this.adminCredentials = { username: 'admin', password: 'admin123' }; // Default admin credentials
+        console.log('Admin credentials initialized:', this.adminCredentials);
+        
+        // Bot protection: Rate limiting
+        this.registrationAttempts = JSON.parse(localStorage.getItem('registrationAttempts') || '[]');
+        this.passwordResetAttempts = JSON.parse(localStorage.getItem('passwordResetAttempts') || '[]');
+        this.maxAttemptsPerHour = 5; // Maximum 5 attempts per hour
+        this.maxAttemptsPerDay = 10; // Maximum 10 attempts per day
         
         // Step Counter Properties
         this.stepCounter = {
@@ -18,38 +34,65 @@ class StepathonApp {
             permissionGranted: false
         };
         
+        // Timer properties
+        this.timerInterval = null;
+        this.timerStartTime = null;
+        
         this.init();
     }
 
     init() {
         this.setupEventListeners();
-        this.checkCurrentUser();
-        this.updateLeaderboard();
-        this.updateDates();
+        // Only run these on main page, not admin page
+        if (!window.location.pathname.includes('admin.html')) {
+            this.checkCurrentUser();
+            this.updateLeaderboard();
+            this.updateDates();
+        }
     }
 
     setupEventListeners() {
-        // Login tabs
-        document.querySelectorAll('.login-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                const tabType = e.target.dataset.tab;
-                this.switchLoginTab(tabType);
+        // Login tabs (only if exists - not on admin page)
+        const loginTabs = document.querySelectorAll('.login-tab');
+        if (loginTabs.length > 0) {
+            loginTabs.forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    const tabType = e.target.dataset.tab;
+                    this.switchLoginTab(tabType);
+                });
             });
-        });
+        }
 
-        // Registration form
-        document.getElementById('registrationForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleRegistration();
-        });
+        // Registration form (only if exists - not on admin page)
+        const registrationForm = document.getElementById('registrationForm');
+        if (registrationForm) {
+            // Initialize CAPTCHA for registration
+            this.generateCaptcha('registration');
+            
+            // Refresh CAPTCHA button
+            const refreshCaptcha = document.getElementById('refreshCaptcha');
+            if (refreshCaptcha) {
+                refreshCaptcha.addEventListener('click', () => {
+                    this.generateCaptcha('registration');
+                });
+            }
+            
+            registrationForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleRegistration();
+            });
+        }
 
-        // User login form
-        document.getElementById('loginForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleLogin();
-        });
+        // User login form (only if exists - not on admin page)
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) {
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleLogin();
+            });
+        }
 
-        // Switch between registration and login
+        // Switch between registration and login (only if exists)
         const showRegistrationLink = document.getElementById('showRegistrationLink');
         if (showRegistrationLink) {
             showRegistrationLink.addEventListener('click', (e) => {
@@ -58,7 +101,7 @@ class StepathonApp {
             });
         }
 
-        // Forgot password link
+        // Forgot password link (only if exists)
         const forgotPasswordLink = document.getElementById('forgotPasswordLink');
         if (forgotPasswordLink) {
             forgotPasswordLink.addEventListener('click', (e) => {
@@ -67,20 +110,39 @@ class StepathonApp {
             });
         }
 
-        // Admin login form
-        document.getElementById('adminForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleAdminLogin();
-        });
+        // Admin login form (only if exists on page)
+        const adminForm = document.getElementById('adminForm');
+        if (adminForm) {
+            adminForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleAdminLogin();
+            });
+        }
 
-        document.getElementById('addStepsForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.addSteps();
-        });
+        // Add steps form (only if exists - not on admin page)
+        const addStepsForm = document.getElementById('addStepsForm');
+        if (addStepsForm) {
+            addStepsForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.addSteps();
+            });
+        }
 
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            this.logout();
-        });
+        // Update screenshot requirement based on step counter usage (only if exists)
+        const stepsInput = document.getElementById('stepsInput');
+        if (stepsInput) {
+            stepsInput.addEventListener('input', () => {
+                this.updateScreenshotRequirement();
+            });
+        }
+
+        // Logout button (only if exists - not on admin page)
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                this.logout();
+            });
+        }
 
         // Admin logout
         const adminLogoutBtn = document.getElementById('adminLogoutBtn');
@@ -115,17 +177,19 @@ class StepathonApp {
         });
 
         // Step Counter Event Listeners
+        // Note: startStepCounterBtn is now handled via tabs, but keeping for backward compatibility
         const startStepCounterBtn = document.getElementById('startStepCounterBtn');
         if (startStepCounterBtn) {
             startStepCounterBtn.addEventListener('click', () => {
-                this.showStepCounterPanel();
+                this.switchInputMethod('counter');
             });
         }
 
         const closeStepCounterBtn = document.getElementById('closeStepCounterBtn');
         if (closeStepCounterBtn) {
             closeStepCounterBtn.addEventListener('click', () => {
-                this.hideStepCounterPanel();
+                // Switch back to manual entry when closing
+                this.switchInputMethod('manual');
             });
         }
 
@@ -164,48 +228,60 @@ class StepathonApp {
             });
         }
 
-        // Method tabs
-        document.querySelectorAll('.method-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                const method = e.target.dataset.method;
-                this.switchInputMethod(method);
+        // Method tabs (only if exists - not on admin page)
+        const methodTabs = document.querySelectorAll('.method-tab');
+        if (methodTabs.length > 0) {
+            methodTabs.forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    const method = e.target.dataset.method;
+                    this.switchInputMethod(method);
+                });
             });
-        });
+        }
 
-        // Screenshot upload
+        // Screenshot upload (only if exists)
         const screenshotInput = document.getElementById('screenshotInput');
         const uploadArea = document.getElementById('uploadArea');
         
-        screenshotInput.addEventListener('change', (e) => {
-            this.handleScreenshotUpload(e.target.files[0]);
-        });
+        if (screenshotInput) {
+            screenshotInput.addEventListener('change', (e) => {
+                this.handleScreenshotUpload(e.target.files[0]);
+            });
+        }
 
-        // Drag and drop
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
+        // Drag and drop (only if exists)
+        if (uploadArea) {
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
 
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
 
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) {
-                this.handleScreenshotUpload(file);
-            }
-        });
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    this.handleScreenshotUpload(file);
+                }
+            });
+        }
 
-        // Remove image
-        document.getElementById('removeImageBtn').addEventListener('click', () => {
-            this.resetScreenshotForm();
-        });
+        // Remove image (only if exists)
+        const removeImageBtn = document.getElementById('removeImageBtn');
+        if (removeImageBtn) {
+            removeImageBtn.addEventListener('click', () => {
+                this.resetScreenshotForm();
+            });
+        }
 
-        // Confirm extracted steps
-        document.getElementById('confirmStepsBtn').addEventListener('click', async () => {
+        // Confirm extracted steps (only if exists)
+        const confirmStepsBtn = document.getElementById('confirmStepsBtn');
+        if (confirmStepsBtn) {
+            confirmStepsBtn.addEventListener('click', async () => {
             const steps = parseInt(document.getElementById('extractedSteps').textContent.replace(/,/g, ''));
             if (steps > 0) {
                 // Get the screenshot from OCR form
@@ -221,23 +297,40 @@ class StepathonApp {
             } else {
                 alert('Please edit the steps value before confirming.');
             }
-        });
+            });
+        }
 
-        // Edit steps
-        document.getElementById('editStepsBtn').addEventListener('click', () => {
-            document.getElementById('editStepsInput').style.display = 'flex';
-            const currentSteps = document.getElementById('extractedSteps').textContent.replace(/,/g, '');
-            document.getElementById('editedSteps').value = currentSteps;
-        });
+        // Edit steps (only if exists)
+        const editStepsBtn = document.getElementById('editStepsBtn');
+        if (editStepsBtn) {
+            editStepsBtn.addEventListener('click', () => {
+                const editStepsInput = document.getElementById('editStepsInput');
+                const extractedSteps = document.getElementById('extractedSteps');
+                const editedSteps = document.getElementById('editedSteps');
+                if (editStepsInput && extractedSteps && editedSteps) {
+                    editStepsInput.style.display = 'flex';
+                    const currentSteps = extractedSteps.textContent.replace(/,/g, '');
+                    editedSteps.value = currentSteps;
+                }
+            });
+        }
 
-        // Save edited steps
-        document.getElementById('saveEditedStepsBtn').addEventListener('click', () => {
-            const editedSteps = parseInt(document.getElementById('editedSteps').value);
-            if (!isNaN(editedSteps) && editedSteps >= 0) {
-                document.getElementById('extractedSteps').textContent = editedSteps.toLocaleString();
-                document.getElementById('editStepsInput').style.display = 'none';
-            }
-        });
+        // Save edited steps (only if exists)
+        const saveEditedStepsBtn = document.getElementById('saveEditedStepsBtn');
+        if (saveEditedStepsBtn) {
+            saveEditedStepsBtn.addEventListener('click', () => {
+                const editedSteps = document.getElementById('editedSteps');
+                const extractedSteps = document.getElementById('extractedSteps');
+                const editStepsInput = document.getElementById('editStepsInput');
+                if (editedSteps && extractedSteps && editStepsInput) {
+                    const steps = parseInt(editedSteps.value);
+                    if (!isNaN(steps) && steps >= 0) {
+                        extractedSteps.textContent = steps.toLocaleString();
+                        editStepsInput.style.display = 'none';
+                    }
+                }
+            });
+        }
 
         // Refresh motivation button
         const refreshMotivationBtn = document.getElementById('refreshMotivationBtn');
@@ -266,16 +359,34 @@ class StepathonApp {
         document.querySelectorAll('.method-tab').forEach(tab => {
             tab.classList.remove('active');
         });
-        document.querySelector(`[data-method="${method}"]`).classList.add('active');
-
-        if (method === 'manual') {
-            document.getElementById('addStepsForm').style.display = 'block';
-            document.getElementById('screenshotForm').style.display = 'none';
-        } else {
-            document.getElementById('addStepsForm').style.display = 'none';
-            document.getElementById('screenshotForm').style.display = 'block';
+        const activeTab = document.querySelector(`[data-method="${method}"]`);
+        if (activeTab) {
+            activeTab.classList.add('active');
         }
-        this.resetScreenshotForm();
+
+        // Hide all forms
+        const addStepsForm = document.getElementById('addStepsForm');
+        const screenshotForm = document.getElementById('screenshotForm');
+        const stepCounterForm = document.getElementById('stepCounterForm');
+        
+        if (addStepsForm) addStepsForm.style.display = 'none';
+        if (screenshotForm) screenshotForm.style.display = 'none';
+        if (stepCounterForm) stepCounterForm.style.display = 'none';
+
+        // Show the selected form
+        if (method === 'counter') {
+            if (stepCounterForm) {
+                stepCounterForm.style.display = 'block';
+                // Request permission when counter tab is opened
+                this.requestMotionPermission();
+            }
+        } else if (method === 'manual') {
+            if (addStepsForm) addStepsForm.style.display = 'block';
+            this.resetScreenshotForm();
+        } else if (method === 'screenshot') {
+            if (screenshotForm) screenshotForm.style.display = 'block';
+            this.resetScreenshotForm();
+        }
     }
 
     async handleScreenshotUpload(file) {
@@ -948,33 +1059,123 @@ class StepathonApp {
             return;
         }
 
+        // Check credentials
         if (username === this.adminCredentials.username && password === this.adminCredentials.password) {
             this.isAdmin = true;
             localStorage.setItem('isAdmin', 'true');
-            this.showAdminDashboard();
+            
+            // Redirect to admin page if not already there
+            if (!window.location.pathname.includes('admin.html')) {
+                window.location.href = 'admin.html';
+            } else {
+                this.showAdminDashboard();
+            }
         } else {
-            alert('Invalid admin credentials!');
+            alert('Invalid admin credentials! Please check your username and password.');
+            document.getElementById('adminPassword').focus();
         }
     }
 
     adminLogout() {
         this.isAdmin = false;
         localStorage.removeItem('isAdmin');
-        document.getElementById('loginCard').style.display = 'block';
-        document.getElementById('adminDashboard').style.display = 'none';
-        document.getElementById('dashboardCard').style.display = 'none';
+        
+        // Check if we're on admin page
+        if (window.location.pathname.includes('admin.html')) {
+            document.getElementById('adminLoginCard').style.display = 'block';
+            document.getElementById('adminDashboard').style.display = 'none';
+            const adminForm = document.getElementById('adminForm');
+            if (adminForm) {
+                adminForm.reset();
+            }
+        } else {
+            // On main page
+            document.getElementById('loginCard').style.display = 'block';
+            const adminDashboard = document.getElementById('adminDashboard');
+            if (adminDashboard) {
+                adminDashboard.style.display = 'none';
+            }
+            document.getElementById('dashboardCard').style.display = 'none';
+        }
     }
 
     loadStepEntries() {
-        const saved = localStorage.getItem('stepEntries');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('stepEntries');
+            console.log('loadStepEntries - Raw localStorage value:', saved);
+            
+            if (!saved || saved === 'null' || saved === 'undefined') {
+                console.log('No stepEntries found in localStorage (or null/undefined)');
+                return [];
+            }
+            
+            const entries = JSON.parse(saved);
+            console.log('loadStepEntries - Parsed entries:', entries);
+            console.log('loadStepEntries - Is array?', Array.isArray(entries));
+            console.log('loadStepEntries - Type:', typeof entries);
+            
+            if (!Array.isArray(entries)) {
+                console.error('stepEntries is not an array! Type:', typeof entries, 'Value:', entries);
+                return [];
+            }
+            
+            console.log('Loaded stepEntries from localStorage:', entries.length, 'entries');
+            return entries;
+        } catch (error) {
+            console.error('Error loading stepEntries from localStorage:', error);
+            console.error('Error stack:', error.stack);
+            return [];
+        }
     }
 
     saveStepEntries() {
-        localStorage.setItem('stepEntries', JSON.stringify(this.stepEntries));
+        try {
+            if (!Array.isArray(this.stepEntries)) {
+                console.error('Cannot save stepEntries - not an array!', typeof this.stepEntries, this.stepEntries);
+                this.stepEntries = [];
+            }
+            const jsonString = JSON.stringify(this.stepEntries);
+            localStorage.setItem('stepEntries', jsonString);
+            console.log('Saved stepEntries to localStorage:', this.stepEntries.length, 'entries');
+            console.log('Saved data size:', jsonString.length, 'characters');
+            
+            // Verify save
+            const verify = localStorage.getItem('stepEntries');
+            if (verify !== jsonString) {
+                console.error('Save verification failed! Data mismatch.');
+            } else {
+                console.log('Save verification successful');
+            }
+        } catch (error) {
+            console.error('Error saving stepEntries to localStorage:', error);
+            console.error('Error stack:', error.stack);
+        }
     }
 
     handleRegistration() {
+        // Bot protection: Check honeypot field
+        const honeypot = document.getElementById('website');
+        if (honeypot && honeypot.value.trim() !== '') {
+            console.warn('Bot detected: Honeypot field was filled');
+            alert('Bot activity detected. Registration blocked.');
+            return;
+        }
+
+        // Bot protection: Rate limiting check
+        if (!this.checkRateLimit('registration')) {
+            this.recordAttempt('registration', false); // Record failed attempt
+            alert('Too many registration attempts. Please try again later.\n\nMaximum 5 attempts per hour and 10 attempts per day.');
+            return;
+        }
+
+        // Bot protection: Verify CAPTCHA
+        if (!this.verifyCaptcha('registration')) {
+            this.recordAttempt('registration', false); // Record failed attempt
+            alert('Security check failed. Please solve the math problem correctly.');
+            this.generateCaptcha('registration'); // Generate new CAPTCHA
+            return;
+        }
+
         const name = document.getElementById('employeeName').value.trim();
         const id = document.getElementById('employeeId').value.trim();
         const email = document.getElementById('emailId').value.trim();
@@ -1064,6 +1265,12 @@ class StepathonApp {
         this.participants.push(participant);
         localStorage.setItem('participants', JSON.stringify(this.participants));
 
+        // Record successful registration attempt
+        this.recordAttempt('registration', true);
+
+        // Generate new CAPTCHA for next registration
+        this.generateCaptcha('registration');
+
         // Simulate sending password email
         this.sendPasswordEmail(email, password, username);
 
@@ -1123,13 +1330,25 @@ class StepathonApp {
         return hash.toString();
     }
 
-    sendPasswordEmail(email, password, username) {
-        // Simulate email sending
-        // In a real application, this would call a backend API to send the email
-        console.log(`Email sent to ${email}:`);
-        console.log(`Subject: Welcome to WoW-CSG Stepathon Challenge`);
-        console.log(`Body: 
-Dear Participant,
+    initializeEmailJS() {
+        // Check if EmailJS is available
+        if (typeof emailjs !== 'undefined') {
+            // Initialize EmailJS with public key (user needs to configure this)
+            // Get from localStorage or use default
+            const emailjsPublicKey = localStorage.getItem('emailjs_public_key') || '';
+            if (emailjsPublicKey) {
+                emailjs.init(emailjsPublicKey);
+            }
+        }
+    }
+
+    async sendPasswordEmail(email, password, username) {
+        // Try to send email automatically via EmailJS first
+        const emailSent = await this.sendEmailViaEmailJS(email, username, password);
+        
+        // Create email content for mailto link
+        const subject = encodeURIComponent('Welcome to WoW-CSG Stepathon Challenge - Your Account Details');
+        const body = encodeURIComponent(`Dear Participant,
 
 Welcome to the WoW-CSG Stepathon Challenge 2025!
 
@@ -1143,10 +1362,9 @@ Please keep this information secure and login to start tracking your steps.
 Note: Each email address and Employee ID can only be registered once.
 
 Best regards,
-WoW-CSG Stepathon Team
-        `);
+WoW-CSG Stepathon Team`);
 
-        // Store email details for display (in real app, this would be sent via backend)
+        // Store email details for reference
         const emailData = {
             to: email,
             subject: 'Welcome to WoW-CSG Stepathon Challenge - Your Account Details',
@@ -1165,27 +1383,507 @@ Note: Each email address and Employee ID can only be registered once.
 
 Best regards,
 WoW-CSG Stepathon Team`,
-            sentAt: new Date().toISOString()
+            sentAt: new Date().toISOString(),
+            sentViaEmailJS: emailSent
         };
 
-        // Store in localStorage for reference (in production, this would be handled by backend)
+        // Store in localStorage for reference
         const sentEmails = JSON.parse(localStorage.getItem('sentEmails') || '[]');
         sentEmails.push(emailData);
         localStorage.setItem('sentEmails', JSON.stringify(sentEmails));
+
+        // Show email modal with copy functionality and mailto link
+        this.showEmailModal(email, username, password, subject, body, emailSent);
     }
 
-    handleForgotPassword() {
-        const username = prompt('Enter your username to receive password reset instructions:');
-        if (!username) return;
+    async sendEmailViaEmailJS(email, username, password) {
+        // Check if EmailJS is configured
+        if (typeof emailjs === 'undefined') {
+            return false;
+        }
 
-        const participant = this.participants.find(p => p.username && p.username.toLowerCase() === username.toLowerCase());
-        if (!participant) {
-            alert('Username not found!');
+        // Get EmailJS configuration from localStorage
+        const emailjsServiceId = localStorage.getItem('emailjs_service_id');
+        const emailjsTemplateId = localStorage.getItem('emailjs_template_id');
+        const emailjsPublicKey = localStorage.getItem('emailjs_public_key');
+
+        // If not configured, return false
+        if (!emailjsServiceId || !emailjsTemplateId || !emailjsPublicKey) {
+            return false;
+        }
+
+        try {
+            // Initialize EmailJS if not already initialized
+            if (!emailjs.init) {
+                emailjs.init(emailjsPublicKey);
+            }
+
+            // Prepare email template parameters
+            const templateParams = {
+                to_email: email,
+                to_name: username,
+                username: username,
+                password: password,
+                subject: 'Welcome to WoW-CSG Stepathon Challenge - Your Account Details',
+                message: `Dear Participant,
+
+Welcome to the WoW-CSG Stepathon Challenge 2025!
+
+Your account has been created successfully.
+
+Username: ${username}
+Password: ${password}
+
+Please keep this information secure and login to start tracking your steps.
+
+Note: Each email address and Employee ID can only be registered once.
+
+Best regards,
+WoW-CSG Stepathon Team`
+            };
+
+            // Send email via EmailJS
+            await emailjs.send(emailjsServiceId, emailjsTemplateId, templateParams);
+            return true;
+        } catch (error) {
+            console.error('EmailJS Error:', error);
+            return false;
+        }
+    }
+
+    showEmailModal(email, username, password, subject, body, emailSent = false) {
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.className = 'email-modal-overlay';
+        
+        const emailStatus = emailSent 
+            ? '<div class="email-success"><p>✅ Email sent successfully to your registered email address!</p></div>'
+            : '<div class="email-warning"><p>⚠️ Automatic email sending is not configured. Please use the options below to receive your credentials.</p></div>';
+        
+        modal.innerHTML = `
+            <div class="email-modal">
+                <div class="email-modal-header">
+                    <h3>📧 Account Details ${emailSent ? 'Sent' : 'Ready'}</h3>
+                    <button class="email-modal-close" onclick="this.closest('.email-modal-overlay').remove()">×</button>
+                </div>
+                <div class="email-modal-content">
+                    ${emailStatus}
+                    <p class="email-info">Your account credentials:</p>
+                    <div class="email-details">
+                        <p><strong>To:</strong> ${email}</p>
+                        <p><strong>Subject:</strong> Welcome to WoW-CSG Stepathon Challenge - Your Account Details</p>
+                    </div>
+                    <div class="email-credentials">
+                        <div class="credential-item">
+                            <label>Username:</label>
+                            <div class="credential-value">
+                                <span id="copyUsername">${username}</span>
+                                <button class="btn-copy" onclick="app.copyToClipboard('${username}', 'Username')">📋 Copy</button>
+                            </div>
+                        </div>
+                        <div class="credential-item">
+                            <label>Password:</label>
+                            <div class="credential-value">
+                                <span id="copyPassword">${password}</span>
+                                <button class="btn-copy" onclick="app.copyToClipboard('${password}', 'Password')">📋 Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="email-actions">
+                        <a href="mailto:${email}?subject=${subject}&body=${body}" class="btn btn-primary" target="_blank" onclick="this.closest('.email-modal-overlay').remove()">
+                            📧 Open Email Client
+                        </a>
+                        <button class="btn btn-secondary" onclick="app.copyEmailContent('${email}', '${username}', '${password}')">
+                            📋 Copy All Details
+                        </button>
+                    </div>
+                    ${!emailSent ? `
+                    <div class="email-note">
+                        <p><strong>Note:</strong> To enable automatic email sending, please configure EmailJS settings in the admin panel or contact your administrator.</p>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Close on overlay click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        // Auto-close after 5 seconds if email was sent successfully
+        if (emailSent) {
+            setTimeout(() => {
+                if (modal.parentNode) {
+                    modal.remove();
+                }
+            }, 5000);
+        }
+    }
+
+    copyToClipboard(text, label) {
+        navigator.clipboard.writeText(text).then(() => {
+            this.showToast(`${label} copied to clipboard!`);
+        }).catch(() => {
+            // Fallback for older browsers
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                this.showToast(`${label} copied to clipboard!`);
+            } catch (err) {
+                this.showToast('Failed to copy. Please copy manually.');
+            }
+            document.body.removeChild(textarea);
+        });
+    }
+
+    copyEmailContent(email, username, password) {
+        const content = `Account Details for WoW-CSG Stepathon Challenge
+
+Email: ${email}
+Username: ${username}
+Password: ${password}
+
+Please keep this information secure.`;
+        
+        this.copyToClipboard(content, 'Email content');
+    }
+
+    showToast(message, type = 'success') {
+        // Remove existing toast if any
+        const existingToast = document.querySelector('.toast-notification');
+        if (existingToast) {
+            existingToast.remove();
+        }
+
+        const toast = document.createElement('div');
+        toast.className = `toast-notification toast-${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        // Show toast
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 10);
+
+        // Hide and remove toast after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.remove();
+                }
+            }, 300);
+        }, 3000);
+    }
+
+    // EmailJS Configuration Functions
+    showEmailJSConfig() {
+        const modal = document.getElementById('emailjsConfigModal');
+        if (modal) {
+            modal.style.display = 'block';
+            this.loadEmailJSConfig();
+        }
+    }
+
+    closeEmailJSConfig() {
+        const modal = document.getElementById('emailjsConfigModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    loadEmailJSConfig() {
+        const serviceId = localStorage.getItem('emailjs_service_id') || '';
+        const templateId = localStorage.getItem('emailjs_template_id') || '';
+        const publicKey = localStorage.getItem('emailjs_public_key') || '';
+
+        const serviceIdInput = document.getElementById('emailjsServiceId');
+        const templateIdInput = document.getElementById('emailjsTemplateId');
+        const publicKeyInput = document.getElementById('emailjsPublicKey');
+
+        if (serviceIdInput) serviceIdInput.value = serviceId;
+        if (templateIdInput) templateIdInput.value = templateId;
+        if (publicKeyInput) publicKeyInput.value = publicKey;
+    }
+
+    saveEmailJSConfig() {
+        const serviceId = document.getElementById('emailjsServiceId').value.trim();
+        const templateId = document.getElementById('emailjsTemplateId').value.trim();
+        const publicKey = document.getElementById('emailjsPublicKey').value.trim();
+
+        if (!serviceId || !templateId || !publicKey) {
+            alert('Please fill in all EmailJS configuration fields!');
             return;
         }
 
-        // In a real app, this would send a password reset email
-        alert(`Password reset instructions have been sent to: ${participant.email}\n\n(In a production system, you would receive an email with reset instructions.)`);
+        localStorage.setItem('emailjs_service_id', serviceId);
+        localStorage.setItem('emailjs_template_id', templateId);
+        localStorage.setItem('emailjs_public_key', publicKey);
+
+        // Reinitialize EmailJS
+        this.initializeEmailJS();
+
+        const statusDiv = document.getElementById('emailjsStatus');
+        if (statusDiv) {
+            statusDiv.innerHTML = '<div class="email-success"><p>✅ EmailJS configuration saved successfully!</p></div>';
+        }
+
+        this.showToast('EmailJS configuration saved!');
+    }
+
+    async testEmailJS() {
+        const testEmail = prompt('Enter your email address to send a test email:');
+        if (!testEmail) return;
+
+        const serviceId = localStorage.getItem('emailjs_service_id');
+        const templateId = localStorage.getItem('emailjs_template_id');
+        const publicKey = localStorage.getItem('emailjs_public_key');
+
+        if (!serviceId || !templateId || !publicKey) {
+            alert('Please configure EmailJS first!');
+            return;
+        }
+
+        try {
+            if (typeof emailjs === 'undefined') {
+                alert('EmailJS SDK not loaded. Please refresh the page.');
+                return;
+            }
+
+            emailjs.init(publicKey);
+
+            const templateParams = {
+                to_email: testEmail,
+                to_name: 'Test User',
+                username: 'testuser',
+                password: 'testpass123',
+                subject: 'Test Email - WoW-CSG Stepathon',
+                message: 'This is a test email from WoW-CSG Stepathon Challenge. If you receive this, EmailJS is configured correctly!'
+            };
+
+            await emailjs.send(serviceId, templateId, templateParams);
+            
+            const statusDiv = document.getElementById('emailjsStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="email-success"><p>✅ Test email sent successfully to ${testEmail}!</p></div>`;
+            }
+            this.showToast('Test email sent successfully!');
+        } catch (error) {
+            console.error('EmailJS Test Error:', error);
+            const statusDiv = document.getElementById('emailjsStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="email-error"><p>❌ Error: ${error.text || error.message || 'Failed to send test email'}</p></div>`;
+            }
+            alert('Failed to send test email. Please check your EmailJS configuration.');
+        }
+    }
+
+    clearEmailJSConfig() {
+        if (confirm('Are you sure you want to clear EmailJS configuration? Automatic email sending will be disabled.')) {
+            localStorage.removeItem('emailjs_service_id');
+            localStorage.removeItem('emailjs_template_id');
+            localStorage.removeItem('emailjs_public_key');
+            
+            const serviceIdInput = document.getElementById('emailjsServiceId');
+            const templateIdInput = document.getElementById('emailjsTemplateId');
+            const publicKeyInput = document.getElementById('emailjsPublicKey');
+
+            if (serviceIdInput) serviceIdInput.value = '';
+            if (templateIdInput) templateIdInput.value = '';
+            if (publicKeyInput) publicKeyInput.value = '';
+
+            const statusDiv = document.getElementById('emailjsStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<div class="email-warning"><p>⚠️ EmailJS configuration cleared.</p></div>';
+            }
+            this.showToast('EmailJS configuration cleared');
+        }
+    }
+
+    handleForgotPassword() {
+        // Show forgot password modal
+        this.showForgotPasswordModal();
+    }
+
+    showForgotPasswordModal() {
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.className = 'email-modal-overlay';
+        
+        // Generate CAPTCHA for password reset
+        const captcha = this.generateCaptchaValue();
+        
+        modal.innerHTML = `
+            <div class="email-modal">
+                <div class="email-modal-header">
+                    <h3>🔑 Reset Password</h3>
+                    <button class="email-modal-close" onclick="this.closest('.email-modal-overlay').remove()">×</button>
+                </div>
+                <div class="email-modal-content">
+                    <p class="email-info">Enter your username or email to reset your password.</p>
+                    <form id="resetPasswordForm" onsubmit="event.preventDefault(); app.resetPassword();">
+                        <!-- Honeypot field -->
+                        <input type="text" id="resetWebsite" name="website" style="display: none;" tabindex="-1" autocomplete="off">
+                        
+                        <div class="form-group">
+                            <label for="resetIdentifier">Username or Email <span class="required">*</span></label>
+                            <input type="text" id="resetIdentifier" placeholder="Enter username or email" required autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label for="newPassword">New Password <span class="required">*</span></label>
+                            <input type="password" id="newPassword" placeholder="Enter new password (min 6 characters)" required minlength="6" autocomplete="new-password">
+                            <small class="form-hint">Minimum 6 characters</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmNewPassword">Confirm New Password <span class="required">*</span></label>
+                            <input type="password" id="confirmNewPassword" placeholder="Confirm new password" required minlength="6" autocomplete="new-password">
+                        </div>
+                        <div class="form-group captcha-group">
+                            <label for="resetCaptchaAnswer">Security Check <span class="required">*</span></label>
+                            <div class="captcha-container">
+                                <div class="captcha-question" id="resetCaptchaQuestion">${captcha.question}</div>
+                                <input type="number" id="resetCaptchaAnswer" placeholder="Enter answer" required autocomplete="off" min="0">
+                                <button type="button" class="btn btn-secondary btn-small" onclick="app.refreshResetCaptcha()" title="Refresh CAPTCHA">🔄</button>
+                            </div>
+                            <small class="form-hint">Please solve the math problem to verify you're human.</small>
+                        </div>
+                        <div class="email-actions">
+                            <button type="submit" class="btn btn-primary">Reset Password</button>
+                            <button type="button" class="btn btn-secondary" onclick="this.closest('.email-modal-overlay').remove()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Store CAPTCHA answer in modal data
+        modal.dataset.captchaAnswer = captcha.answer;
+        
+        // Close on overlay click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+
+        // Focus on first input
+        setTimeout(() => {
+            document.getElementById('resetIdentifier').focus();
+        }, 100);
+    }
+
+    resetPassword() {
+        // Bot protection: Check honeypot field
+        const honeypot = document.getElementById('resetWebsite');
+        if (honeypot && honeypot.value.trim() !== '') {
+            console.warn('Bot detected: Honeypot field was filled in password reset');
+            alert('Bot activity detected. Password reset blocked.');
+            return;
+        }
+
+        // Bot protection: Rate limiting check
+        if (!this.checkRateLimit('passwordReset')) {
+            this.recordAttempt('passwordReset', false); // Record failed attempt
+            alert('Too many password reset attempts. Please try again later.\n\nMaximum 5 attempts per hour and 10 attempts per day.');
+            return;
+        }
+
+        // Bot protection: Verify CAPTCHA
+        const modal = document.querySelector('.email-modal-overlay');
+        const captchaAnswer = modal ? parseInt(modal.dataset.captchaAnswer) : null;
+        const userAnswer = parseInt(document.getElementById('resetCaptchaAnswer').value);
+        
+        if (!captchaAnswer || userAnswer !== captchaAnswer) {
+            this.recordAttempt('passwordReset', false); // Record failed attempt
+            alert('Security check failed. Please solve the math problem correctly.');
+            this.refreshResetCaptcha();
+            return;
+        }
+
+        const identifier = document.getElementById('resetIdentifier').value.trim();
+        const newPassword = document.getElementById('newPassword').value;
+        const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+
+        if (!identifier) {
+            alert('Please enter your username or email!');
+            return;
+        }
+
+        if (!newPassword || newPassword.length < 6) {
+            alert('Password must be at least 6 characters long!');
+            return;
+        }
+
+        if (newPassword !== confirmNewPassword) {
+            alert('Passwords do not match!');
+            return;
+        }
+
+        // Find participant by username or email
+        const participant = this.participants.find(p => 
+            (p.username && p.username.toLowerCase() === identifier.toLowerCase()) ||
+            (p.email && p.email.toLowerCase() === identifier.toLowerCase())
+        );
+
+        if (!participant) {
+            alert('Username or email not found! Please check and try again.');
+            document.getElementById('resetIdentifier').focus();
+            return;
+        }
+
+        // Update password
+        const oldPassword = participant.password;
+        participant.password = this.hashPassword(newPassword);
+        participant.passwordResetAt = new Date().toISOString();
+
+        // Update in participants array
+        const index = this.participants.findIndex(p => 
+            (p.username && p.username.toLowerCase() === identifier.toLowerCase()) ||
+            (p.email && p.email.toLowerCase() === identifier.toLowerCase())
+        );
+        if (index !== -1) {
+            this.participants[index] = participant;
+        }
+
+        // Save to localStorage
+        localStorage.setItem('participants', JSON.stringify(this.participants));
+
+        // If current user is logged in and matches, update their session
+        if (this.currentUser && (
+            (this.currentUser.username && this.currentUser.username.toLowerCase() === identifier.toLowerCase()) ||
+            (this.currentUser.email && this.currentUser.email.toLowerCase() === identifier.toLowerCase())
+        )) {
+            this.currentUser.password = participant.password;
+            localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+        }
+
+        // Record successful password reset attempt
+        this.recordAttempt('passwordReset', true);
+
+        // Close modal
+        document.querySelector('.email-modal-overlay').remove();
+
+        // Show success message
+        this.showToast('Password reset successfully! You can now login with your new password.');
+        
+        // Switch to login tab if on main page
+        if (!window.location.pathname.includes('admin.html')) {
+            setTimeout(() => {
+                this.switchLoginTab('user-login');
+                document.getElementById('loginUsername').value = participant.username || '';
+                document.getElementById('loginUsername').focus();
+            }, 500);
+        }
     }
 
     showDashboard() {
@@ -1412,10 +2110,16 @@ WoW-CSG Stepathon Team`,
             return;
         }
 
-        // Check for screenshot (mandatory for all entries)
+        // Check for screenshot (mandatory for manual entry, optional for step counter)
         const manualScreenshot = document.getElementById('manualScreenshot');
         let screenshotData = null;
         let file = null;
+        let fromStepCounter = false;
+
+        // Check if steps came from step counter (check if step counter was used)
+        if (this.stepCounter.stepCount > 0 && parseInt(document.getElementById('stepsInput').value) === this.stepCounter.stepCount) {
+            fromStepCounter = true;
+        }
 
         // Check if screenshot is from OCR method (tempScreenshotFile) or manual upload
         if (this.tempScreenshotFile) {
@@ -1424,10 +2128,12 @@ WoW-CSG Stepathon Team`,
         } else if (manualScreenshot && manualScreenshot.files.length > 0) {
             file = manualScreenshot.files[0];
             screenshotData = await this.convertFileToBase64(file);
-        } else {
+        } else if (!fromStepCounter) {
+            // Screenshot required for manual entry (not from step counter)
             alert('Please upload a screenshot for entry validation!');
             return;
         }
+        // If fromStepCounter is true and no screenshot, proceed without screenshot
 
         const today = new Date().toDateString();
         const currentSteps = this.currentUser.dailySteps[today] || 0;
@@ -1436,29 +2142,64 @@ WoW-CSG Stepathon Team`,
         this.currentUser.lastActivity = new Date().toISOString();
 
         // Create step entry for admin validation
-        const entryId = `ENTRY_${Date.now()}`;
+        const entryId = `ENTRY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const stepEntry = {
             id: entryId,
-            userId: this.currentUser.id,
-            userName: this.currentUser.name,
-            userEmail: this.currentUser.email,
+            userId: this.currentUser.id || this.currentUser.employeeId || 'unknown',
+            userName: this.currentUser.name || 'Unknown User',
+            userEmail: this.currentUser.email || this.currentUser.emailId || 'No email',
             steps: steps,
             screenshot: screenshotData,
             date: new Date().toISOString(),
             status: 'pending', // pending, approved, rejected
             validatedBy: null,
             validatedAt: null,
-            notes: null
+            lastModifiedBy: null,
+            lastModifiedAt: null,
+            notes: null,
+            source: fromStepCounter ? 'step-counter' : 'manual'
         };
 
+        // Ensure stepEntries is initialized
+        if (!this.stepEntries || !Array.isArray(this.stepEntries)) {
+            console.warn('stepEntries not initialized in addSteps, loading from localStorage...');
+            this.stepEntries = this.loadStepEntries();
+        }
+        
         this.stepEntries.unshift(stepEntry);
+        
+        console.log('=== Entry Creation (addSteps) ===');
+        console.log('Entry created:', stepEntry);
+        console.log('Total entries before save:', this.stepEntries.length);
+        
         this.saveStepEntries();
+        
+        // Verify save immediately
+        const verify = this.loadStepEntries();
+        console.log('Verification - Entries in localStorage after save:', verify.length);
+        console.log('Verification - Latest entry ID:', verify.length > 0 ? verify[0].id : 'none');
+        
+        if (verify.length === 0) {
+            console.error('ERROR: Entry was not saved to localStorage! Attempting manual save...');
+            // Try manual save
+            try {
+                localStorage.setItem('stepEntries', JSON.stringify([stepEntry]));
+                console.log('Manual save attempted');
+            } catch (e) {
+                console.error('Manual save also failed:', e);
+                alert('CRITICAL: Entry could not be saved to localStorage! Please check browser settings.');
+            }
+        }
 
         // Add activity
+        const activityMessage = fromStepCounter 
+            ? `Counted ${steps.toLocaleString()} steps using step counter (Pending validation)`
+            : `Added ${steps.toLocaleString()} steps (Pending validation)`;
+        
         this.currentUser.activities.unshift({
             date: new Date().toISOString(),
             steps: steps,
-            message: `Added ${steps.toLocaleString()} steps (Pending validation)`,
+            message: activityMessage,
             entryId: entryId
         });
 
@@ -1482,6 +2223,12 @@ WoW-CSG Stepathon Team`,
         document.getElementById('stepsInput').value = '';
         this.resetManualScreenshot();
         
+        // Reset step counter if it was used
+        if (fromStepCounter) {
+            this.resetStepCounter();
+            this.hideStepCounterPanel();
+        }
+        
         // Show success animation
         this.showSuccessAnimation(steps);
         
@@ -1498,23 +2245,118 @@ WoW-CSG Stepathon Team`,
         });
     }
 
+    handleAdminLogin() {
+        try {
+            const usernameInput = document.getElementById('adminUsername');
+            const passwordInput = document.getElementById('adminPassword');
+            
+            if (!usernameInput || !passwordInput) {
+                alert('Error: Admin login form elements not found. Please refresh the page.');
+                console.error('Admin form elements not found');
+                return;
+            }
+
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+
+            if (!username || !password) {
+                alert('Please enter both username and password!');
+                return;
+            }
+
+            // Debug logging
+            console.log('Admin login attempt:', { username, expectedUsername: this.adminCredentials.username });
+            console.log('Password check:', { passwordLength: password.length, expectedPassword: this.adminCredentials.password });
+
+            // Check credentials
+            if (username === this.adminCredentials.username && password === this.adminCredentials.password) {
+                this.isAdmin = true;
+                localStorage.setItem('isAdmin', 'true');
+                
+                console.log('Admin login successful');
+                
+                // Redirect to admin page if not already there
+                if (!window.location.pathname.includes('admin.html')) {
+                    window.location.href = 'admin.html';
+                } else {
+                    this.showAdminDashboard();
+                }
+            } else {
+                alert('Invalid admin credentials!\n\nExpected:\nUsername: ' + this.adminCredentials.username + '\nPassword: ' + this.adminCredentials.password + '\n\nYou entered:\nUsername: ' + username + '\nPassword: ' + (password ? '***' : '(empty)'));
+                passwordInput.focus();
+                passwordInput.select();
+            }
+        } catch (error) {
+            console.error('Admin login error:', error);
+            alert('An error occurred during admin login. Please check the console for details.\n\nError: ' + error.message);
+        }
+    }
+
     showAdminDashboard() {
-        document.getElementById('loginCard').style.display = 'none';
-        document.getElementById('dashboardCard').style.display = 'none';
-        document.getElementById('adminDashboard').style.display = 'block';
+        // Check if we're on admin page
+        if (window.location.pathname.includes('admin.html')) {
+            document.getElementById('adminLoginCard').style.display = 'none';
+            document.getElementById('adminDashboard').style.display = 'block';
+        } else {
+            // On main page
+            document.getElementById('loginCard').style.display = 'none';
+            document.getElementById('dashboardCard').style.display = 'none';
+            const adminDashboard = document.getElementById('adminDashboard');
+            if (adminDashboard) {
+                adminDashboard.style.display = 'block';
+            }
+        }
         this.updateAdminDashboard();
     }
 
     updateAdminDashboard() {
-        const pending = this.stepEntries.filter(e => e.status === 'pending').length;
-        const approved = this.stepEntries.filter(e => e.status === 'approved').length;
-        const rejected = this.stepEntries.filter(e => e.status === 'rejected').length;
+        try {
+            console.log('=== updateAdminDashboard called ===');
+            
+            // Reload entries from localStorage to ensure we have the latest data
+            this.stepEntries = this.loadStepEntries();
+            
+            console.log('Admin Dashboard - Total entries loaded:', this.stepEntries.length);
+            console.log('Admin Dashboard - Entries:', JSON.stringify(this.stepEntries, null, 2));
+            
+            // Check localStorage directly
+            const rawData = localStorage.getItem('stepEntries');
+            console.log('Raw localStorage stepEntries:', rawData);
+            console.log('localStorage stepEntries length:', rawData ? rawData.length : 0);
+            
+            if (!Array.isArray(this.stepEntries)) {
+                console.error('stepEntries is not an array!', typeof this.stepEntries, this.stepEntries);
+                this.stepEntries = [];
+            }
+            
+            const pending = this.stepEntries.filter(e => e && (e.status === 'pending' || !e.status)).length;
+            const approved = this.stepEntries.filter(e => e && e.status === 'approved').length;
+            const rejected = this.stepEntries.filter(e => e && e.status === 'rejected').length;
 
-        document.getElementById('pendingCount').textContent = pending;
-        document.getElementById('approvedCount').textContent = approved;
-        document.getElementById('rejectedCount').textContent = rejected;
+            console.log('Admin Dashboard - Stats:', { pending, approved, rejected, total: this.stepEntries.length });
 
-        this.renderValidationList('pending');
+            const pendingCountEl = document.getElementById('pendingCount');
+            const approvedCountEl = document.getElementById('approvedCount');
+            const rejectedCountEl = document.getElementById('rejectedCount');
+            
+            if (!pendingCountEl) console.error('pendingCount element not found!');
+            if (!approvedCountEl) console.error('approvedCount element not found!');
+            if (!rejectedCountEl) console.error('rejectedCount element not found!');
+            
+            if (pendingCountEl) pendingCountEl.textContent = pending;
+            if (approvedCountEl) approvedCountEl.textContent = approved;
+            if (rejectedCountEl) rejectedCountEl.textContent = rejected;
+
+            // Get current filter or default to 'pending'
+            const activeFilter = document.querySelector('.admin-filters .filter-btn.active');
+            const filter = activeFilter ? (activeFilter.dataset.filter || 'pending') : 'pending';
+            
+            console.log('Rendering validation list with filter:', filter);
+            this.renderValidationList(filter);
+        } catch (error) {
+            console.error('Error in updateAdminDashboard:', error);
+            alert('Error updating admin dashboard: ' + error.message);
+        }
     }
 
     filterAdminEntries(filter) {
@@ -1526,54 +2368,170 @@ WoW-CSG Stepathon Team`,
     }
 
     renderValidationList(filter = 'pending') {
-        const validationList = document.getElementById('validationList');
-        let entries = [...this.stepEntries];
+        try {
+            const validationList = document.getElementById('validationList');
+            if (!validationList) {
+                console.error('validationList element not found!');
+                return;
+            }
 
-        if (filter !== 'all') {
-            entries = entries.filter(e => e.status === filter);
-        }
+            // Ensure entries are loaded (updateAdminDashboard should have loaded them, but reload to be safe)
+            this.stepEntries = this.loadStepEntries();
+            
+            console.log('=== renderValidationList ===');
+            console.log('Filter:', filter);
+            console.log('Total entries:', this.stepEntries.length);
+            console.log('Entries:', this.stepEntries);
+        
+            let entries = [...this.stepEntries];
+            
+            console.log('Entries before filter:', entries.length);
+            if (entries.length > 0) {
+                console.log('Entry statuses:', entries.map(e => ({ 
+                    id: e ? e.id : 'null', 
+                    status: e ? (e.status || 'pending') : 'null',
+                    userName: e ? (e.userName || e.name || 'unknown') : 'null'
+                })));
+            }
 
-        if (entries.length === 0) {
-            validationList.innerHTML = '<p class="no-entries">No entries found</p>';
-            return;
-        }
+            if (filter !== 'all') {
+                entries = entries.filter(e => {
+                    if (!e) {
+                        console.warn('Found null/undefined entry in array');
+                        return false;
+                    }
+                    const entryStatus = (e.status || 'pending').toLowerCase();
+                    const filterStatus = filter.toLowerCase();
+                    const matches = entryStatus === filterStatus;
+                    if (!matches) {
+                        console.log(`Entry ${e.id} status "${entryStatus}" does not match filter "${filterStatus}"`);
+                    }
+                    return matches;
+                });
+            }
+            
+            console.log('Entries after filter:', entries.length);
 
-        validationList.innerHTML = entries.map(entry => {
-            const date = new Date(entry.date);
-            const statusClass = entry.status === 'approved' ? 'approved' : entry.status === 'rejected' ? 'rejected' : 'pending';
-            const statusIcon = entry.status === 'approved' ? '✅' : entry.status === 'rejected' ? '❌' : '⏳';
+            // Sort entries by date (newest first)
+            entries.sort((a, b) => {
+                try {
+                    const dateA = new Date(a.date || 0);
+                    const dateB = new Date(b.date || 0);
+                    return dateB - dateA;
+                } catch (e) {
+                    console.error('Error sorting entries:', e);
+                    return 0;
+                }
+            });
+
+            if (entries.length === 0) {
+                const filterText = filter === 'all' ? '' : ` for "${filter}" status`;
+                validationList.innerHTML = `<p class="no-entries">No entries found${filterText}. Total entries in system: ${this.stepEntries.length}</p>`;
+                console.log('No entries found for filter:', filter);
+                console.log('All entry statuses:', this.stepEntries.map(e => e ? e.status : 'null'));
+                return;
+            }
+
+            console.log('Rendering', entries.length, 'entries');
+            validationList.innerHTML = entries.map(entry => {
+                if (!entry) {
+                    console.error('Null entry found during rendering!');
+                    return '';
+                }
+            // Ensure all required fields exist with fallback values
+            const userName = entry.userName || entry.name || 'Unknown User';
+            const userEmail = entry.userEmail || entry.email || 'No email';
+            const userId = entry.userId || entry.id || 'unknown';
+            const steps = entry.steps || 0;
+            const entryDate = entry.date || new Date().toISOString();
+            const entryStatus = entry.status || 'pending';
+            
+            // Parse date safely
+            let date;
+            try {
+                date = new Date(entryDate);
+                if (isNaN(date.getTime())) {
+                    date = new Date();
+                }
+            } catch (e) {
+                date = new Date();
+            }
+            
+            const statusClass = entryStatus === 'approved' ? 'approved' : entryStatus === 'rejected' ? 'rejected' : 'pending';
+            const statusIcon = entryStatus === 'approved' ? '✅' : entryStatus === 'rejected' ? '❌' : '⏳';
+            
+            // Format date safely
+            let formattedDate;
+            try {
+                formattedDate = date.toLocaleString();
+            } catch (e) {
+                formattedDate = entryDate;
+            }
+            
+            // Format validated date safely
+            let validatedDateStr = '';
+            if (entry.validatedAt) {
+                try {
+                    const validatedDate = new Date(entry.validatedAt);
+                    if (!isNaN(validatedDate.getTime())) {
+                        validatedDateStr = validatedDate.toLocaleString();
+                    }
+                } catch (e) {
+                    validatedDateStr = entry.validatedAt;
+                }
+            }
+            
+            // Format modified date safely
+            let modifiedDateStr = '';
+            if (entry.lastModifiedAt) {
+                try {
+                    const modifiedDate = new Date(entry.lastModifiedAt);
+                    if (!isNaN(modifiedDate.getTime())) {
+                        modifiedDateStr = modifiedDate.toLocaleString();
+                    }
+                } catch (e) {
+                    modifiedDateStr = entry.lastModifiedAt;
+                }
+            }
             
             return `
                 <div class="validation-entry ${statusClass}">
                     <div class="entry-header">
                         <div class="entry-info">
-                            <h4>${entry.userName} (${entry.userEmail})</h4>
-                            <p class="entry-date">${date.toLocaleString()}</p>
+                            <h4>${this.escapeHtml(userName)} (${this.escapeHtml(userEmail)})</h4>
+                            <p class="entry-date">${formattedDate}</p>
+                            <p class="entry-id" style="font-size: 0.8rem; color: #666;">Entry ID: ${entry.id || 'N/A'}</p>
+                            <p class="entry-user-id" style="font-size: 0.8rem; color: #666;">User ID: ${userId}</p>
                         </div>
                         <div class="entry-status ${statusClass}">
-                            ${statusIcon} ${entry.status.toUpperCase()}
+                            ${statusIcon} ${entryStatus.toUpperCase()}
                         </div>
                     </div>
                     <div class="entry-details">
                         <div class="entry-steps">
-                            <strong>Steps:</strong> ${entry.steps.toLocaleString()}
+                            <strong>Steps:</strong> ${steps.toLocaleString()}
                         </div>
                         <div class="entry-screenshot">
                             <strong>Screenshot:</strong>
-                            <img src="${entry.screenshot}" alt="Step screenshot" class="validation-screenshot" onclick="this.classList.toggle('expanded')" style="cursor: pointer;">
+                            ${entry.screenshot ? `
+                                <img src="${entry.screenshot}" alt="Step screenshot" class="validation-screenshot" onclick="this.classList.toggle('expanded')" style="cursor: pointer; max-width: 200px; border-radius: 8px; margin-top: 8px;">
+                            ` : `
+                                <p class="no-screenshot">No screenshot provided (Step counter entry or manual entry without screenshot)</p>
+                            `}
                         </div>
-                        ${entry.validatedBy ? `<div class="entry-validator">Validated by: ${entry.validatedBy} on ${new Date(entry.validatedAt).toLocaleString()}</div>` : ''}
-                        ${entry.lastModifiedBy ? `<div class="entry-modifier">Last modified by: ${entry.lastModifiedBy} on ${new Date(entry.lastModifiedAt).toLocaleString()}</div>` : ''}
-                        ${entry.notes ? `<div class="entry-notes">Notes: ${entry.notes}</div>` : ''}
+                        ${entry.source ? `<div class="entry-source" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Source:</strong> ${entry.source === 'step-counter' ? 'Step Counter' : 'Manual Entry'}</div>` : ''}
+                        ${entry.validatedBy ? `<div class="entry-validator" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Validated by:</strong> ${this.escapeHtml(entry.validatedBy)}${validatedDateStr ? ` on ${validatedDateStr}` : ''}</div>` : ''}
+                        ${entry.lastModifiedBy ? `<div class="entry-modifier" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Last modified by:</strong> ${this.escapeHtml(entry.lastModifiedBy)}${modifiedDateStr ? ` on ${modifiedDateStr}` : ''}</div>` : ''}
+                        ${entry.notes ? `<div class="entry-notes" style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; font-size: 0.9rem;"><strong>Notes:</strong> ${this.escapeHtml(entry.notes)}</div>` : ''}
                     </div>
                     <div class="entry-actions">
-                        ${entry.status === 'pending' ? `
+                        ${entryStatus === 'pending' ? `
                             <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Approve</button>
                             <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject</button>
-                        ` : entry.status === 'approved' ? `
+                        ` : entryStatus === 'approved' ? `
                             <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Re-approve</button>
                             <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject</button>
-                        ` : entry.status === 'rejected' ? `
+                        ` : entryStatus === 'rejected' ? `
                             <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Approve</button>
                             <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject Again</button>
                         ` : ''}
@@ -1581,7 +2539,24 @@ WoW-CSG Stepathon Team`,
                     </div>
                 </div>
             `;
-        }).join('');
+            }).filter(html => html).join(''); // Filter out empty strings
+            
+            console.log('Validation list rendered successfully');
+        } catch (error) {
+            console.error('Error in renderValidationList:', error);
+            console.error('Error stack:', error.stack);
+            const validationList = document.getElementById('validationList');
+            if (validationList) {
+                validationList.innerHTML = `<p class="no-entries" style="color: red;">Error rendering entries: ${error.message}. Check console for details.</p>`;
+            }
+        }
+    }
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     validateEntry(entryId, status) {
@@ -1826,6 +2801,7 @@ WoW-CSG Stepathon Team`,
 
     updateLeaderboard(filter = 'total') {
         const list = document.getElementById('leaderboardList');
+        if (!list) return; // Element doesn't exist on admin page
         list.innerHTML = '';
 
         let sorted = [];
@@ -1927,20 +2903,15 @@ WoW-CSG Stepathon Team`,
 
     // Step Counter Functions
     showStepCounterPanel() {
-        const panel = document.getElementById('stepCounterPanel');
-        if (panel) {
-            panel.style.display = 'block';
-            this.requestMotionPermission();
-        }
+        // This function is kept for backward compatibility but now we use tabs
+        this.switchInputMethod('counter');
     }
 
     hideStepCounterPanel() {
-        const panel = document.getElementById('stepCounterPanel');
-        if (panel) {
-            panel.style.display = 'none';
-            if (this.stepCounter.isRunning) {
-                this.stopStepCounter();
-            }
+        // This function is kept for backward compatibility
+        // When switching away from counter tab, stop if running
+        if (this.stepCounter.isRunning) {
+            this.stopStepCounter();
         }
     }
 
@@ -1997,11 +2968,27 @@ WoW-CSG Stepathon Team`,
         window.addEventListener('devicemotion', this.boundHandleDeviceMotion);
 
         // Update UI
-        document.getElementById('startCounterBtn').style.display = 'none';
-        document.getElementById('stopCounterBtn').style.display = 'inline-block';
-        document.getElementById('useCounterStepsBtn').style.display = 'none';
-        document.getElementById('saveCounterStepsBtn').style.display = 'none';
+        const startBtn = document.getElementById('startCounterBtn');
+        const stopBtn = document.getElementById('stopCounterBtn');
+        const useBtn = document.getElementById('useCounterStepsBtn');
+        const saveBtn = document.getElementById('saveCounterStepsBtn');
+        const timerEl = document.getElementById('counterTimer');
+        const pulseEl = document.getElementById('counterPulse');
+        const valueEl = document.getElementById('liveStepCount');
+        
+        if (startBtn) startBtn.style.display = 'none';
+        if (stopBtn) stopBtn.style.display = 'inline-block';
+        if (useBtn) useBtn.style.display = 'none';
+        if (saveBtn) saveBtn.style.display = 'none';
+        if (timerEl) timerEl.style.display = 'flex';
+        if (pulseEl) pulseEl.classList.add('active');
+        if (valueEl) valueEl.classList.add('active');
+        
         this.updateCounterStatus('Counting steps... Walk naturally!');
+        this.updateCounterHint('Keep your phone in your hand or pocket while walking');
+
+        // Start timer
+        this.startTimer();
 
         // Show notification
         this.showCounterNotification('Step counter started! Start walking.');
@@ -2061,19 +3048,36 @@ WoW-CSG Stepathon Team`,
             window.removeEventListener('devicemotion', this.boundHandleDeviceMotion);
         }
 
+        // Stop timer
+        this.stopTimer();
+
         // Update UI
-        document.getElementById('startCounterBtn').style.display = 'inline-block';
-        document.getElementById('stopCounterBtn').style.display = 'none';
+        const startBtn = document.getElementById('startCounterBtn');
+        const stopBtn = document.getElementById('stopCounterBtn');
+        const useBtn = document.getElementById('useCounterStepsBtn');
+        const saveBtn = document.getElementById('saveCounterStepsBtn');
+        const pulseEl = document.getElementById('counterPulse');
+        const valueEl = document.getElementById('liveStepCount');
+        
+        if (startBtn) startBtn.style.display = 'inline-block';
+        if (stopBtn) stopBtn.style.display = 'none';
+        if (pulseEl) pulseEl.classList.remove('active');
+        if (valueEl) valueEl.classList.remove('active');
         
         if (this.stepCounter.stepCount > 0) {
-            document.getElementById('useCounterStepsBtn').style.display = 'inline-block';
-            document.getElementById('saveCounterStepsBtn').style.display = 'inline-block';
+            if (useBtn) useBtn.style.display = 'block';
+            if (saveBtn) saveBtn.style.display = 'block';
         }
 
         const duration = Math.round((Date.now() - this.stepCounter.startTime) / 1000);
-        this.updateCounterStatus(`Stopped. Counted ${this.stepCounter.stepCount} steps in ${duration} seconds. You can save these steps now!`);
+        const minutes = Math.floor(duration / 60);
+        const seconds = duration % 60;
+        const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
         
-        this.showCounterNotification(`Step counting stopped. Total: ${this.stepCounter.stepCount} steps`);
+        this.updateCounterStatus(`Stopped. Counted ${this.stepCounter.stepCount.toLocaleString()} steps in ${timeStr}.`);
+        this.updateCounterHint('You can save these steps or continue counting');
+        
+        this.showCounterNotification(`Step counting stopped. Total: ${this.stepCounter.stepCount.toLocaleString()} steps`);
     }
 
     resetStepCounter() {
@@ -2082,8 +3086,19 @@ WoW-CSG Stepathon Team`,
         this.stepCounter.startTime = null;
         this.updateStepCounterDisplay();
         this.updateCounterStatus('Counter reset. Ready to start.');
-        document.getElementById('useCounterStepsBtn').style.display = 'none';
-        document.getElementById('saveCounterStepsBtn').style.display = 'none';
+        this.updateCounterHint('Click "Start Counting" and hold your phone while walking');
+        
+        const useBtn = document.getElementById('useCounterStepsBtn');
+        const saveBtn = document.getElementById('saveCounterStepsBtn');
+        const timerEl = document.getElementById('counterTimer');
+        
+        if (useBtn) useBtn.style.display = 'none';
+        if (saveBtn) saveBtn.style.display = 'none';
+        if (timerEl) timerEl.style.display = 'none';
+        
+        // Reset timer display
+        const timerValue = document.getElementById('timerValue');
+        if (timerValue) timerValue.textContent = '00:00';
     }
 
     updateStepCounterDisplay() {
@@ -2110,12 +3125,83 @@ WoW-CSG Stepathon Team`,
         }
     }
 
+    updateCounterHint(message) {
+        const hint = document.getElementById('counterHint');
+        if (hint) {
+            hint.textContent = message;
+        }
+    }
+
+    // Timer functions
+    startTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+        }
+        
+        this.timerStartTime = Date.now();
+        this.timerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - this.timerStartTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            
+            const timerValue = document.getElementById('timerValue');
+            if (timerValue) {
+                timerValue.textContent = timeStr;
+            }
+        }, 1000);
+    }
+
+    stopTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+
     useCounterSteps() {
         if (this.stepCounter.stepCount > 0) {
-            document.getElementById('stepsInput').value = this.stepCounter.stepCount;
-            this.hideStepCounterPanel();
-            this.showCounterNotification(`Added ${this.stepCounter.stepCount} steps to form! Please upload screenshot to save.`);
+            // Switch to manual entry tab and populate the input
+            this.switchInputMethod('manual');
+            const stepsInput = document.getElementById('stepsInput');
+            if (stepsInput) {
+                stepsInput.value = this.stepCounter.stepCount;
+            }
+            this.updateScreenshotRequirement();
+            this.showCounterNotification(`Added ${this.stepCounter.stepCount.toLocaleString()} steps to manual entry form! Screenshot is optional for step counter entries.`);
             // Don't reset counter - user might want to save directly
+        }
+    }
+
+    updateScreenshotRequirement() {
+        const stepsInput = document.getElementById('stepsInput');
+        const screenshotRequired = document.getElementById('screenshotRequired');
+        const screenshotHint = document.getElementById('screenshotHint');
+        const manualScreenshot = document.getElementById('manualScreenshot');
+        
+        if (!stepsInput || !screenshotRequired || !screenshotHint) return;
+
+        const inputValue = parseInt(stepsInput.value);
+        const isFromStepCounter = this.stepCounter.stepCount > 0 && inputValue === this.stepCounter.stepCount;
+
+        if (isFromStepCounter) {
+            // Step counter - screenshot optional
+            screenshotRequired.style.display = 'none';
+            screenshotRequired.textContent = '';
+            screenshotHint.textContent = 'Optional for step counter entries';
+            screenshotHint.style.color = '#666';
+            if (manualScreenshot) {
+                manualScreenshot.removeAttribute('required');
+            }
+        } else {
+            // Manual entry - screenshot required
+            screenshotRequired.style.display = 'inline';
+            screenshotRequired.textContent = '*';
+            screenshotHint.textContent = 'Required for manual entry validation';
+            screenshotHint.style.color = '#333';
+            if (manualScreenshot) {
+                manualScreenshot.setAttribute('required', 'required');
+            }
         }
     }
 
@@ -2131,48 +3217,21 @@ WoW-CSG Stepathon Team`,
             return;
         }
 
-        // Check for screenshot (still required for validation)
+        // Screenshot is optional for step counter entries
         const manualScreenshot = document.getElementById('manualScreenshot');
         let screenshotData = null;
 
+        // Check if screenshot was already uploaded (optional)
         if (manualScreenshot && manualScreenshot.files.length > 0) {
             const file = manualScreenshot.files[0];
             screenshotData = await this.convertFileToBase64(file);
-        } else {
-            // Prompt user to upload screenshot
-            const proceed = confirm(`You have counted ${steps.toLocaleString()} steps!\n\nTo save these steps, you need to upload a screenshot for validation.\n\nClick OK to select a screenshot, or Cancel to use steps in the form.`);
-            
-            if (!proceed) {
-                // User cancelled - just use steps in form
-                this.useCounterSteps();
-                return;
-            }
-
-            // Trigger file input
-            manualScreenshot.click();
-            
-            // Wait for file selection
-            return new Promise((resolve) => {
-                const handleFileSelect = async () => {
-                    if (manualScreenshot.files.length > 0) {
-                        const file = manualScreenshot.files[0];
-                        screenshotData = await this.convertFileToBase64(file);
-                        manualScreenshot.removeEventListener('change', handleFileSelect);
-                        await this.saveStepsWithScreenshot(steps, screenshotData);
-                        resolve();
-                    }
-                };
-                manualScreenshot.addEventListener('change', handleFileSelect);
-            });
         }
 
-        // If screenshot already exists, save directly
-        if (screenshotData) {
-            await this.saveStepsWithScreenshot(steps, screenshotData);
-        }
+        // Save steps (screenshot is optional for step counter)
+        await this.saveStepsWithScreenshot(steps, screenshotData, true);
     }
 
-    async saveStepsWithScreenshot(steps, screenshotData) {
+    async saveStepsWithScreenshot(steps, screenshotData, fromStepCounter = false) {
         const today = new Date().toDateString();
         const currentSteps = this.currentUser.dailySteps[today] || 0;
         this.currentUser.dailySteps[today] = currentSteps + steps;
@@ -2180,30 +3239,64 @@ WoW-CSG Stepathon Team`,
         this.currentUser.lastActivity = new Date().toISOString();
 
         // Create step entry for admin validation
-        const entryId = `ENTRY_${Date.now()}`;
+        const entryId = `ENTRY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const stepEntry = {
             id: entryId,
-            userId: this.currentUser.id,
-            userName: this.currentUser.name,
-            userEmail: this.currentUser.email,
+            userId: this.currentUser.id || this.currentUser.employeeId || 'unknown',
+            userName: this.currentUser.name || 'Unknown User',
+            userEmail: this.currentUser.email || this.currentUser.emailId || 'No email',
             steps: steps,
-            screenshot: screenshotData,
+            screenshot: screenshotData, // Optional for step counter
             date: new Date().toISOString(),
-            status: 'pending',
+            status: 'pending', // Always pending for admin validation
             validatedBy: null,
             validatedAt: null,
-            notes: null,
-            source: 'step-counter' // Mark as from step counter
+            lastModifiedBy: null,
+            lastModifiedAt: null,
+            notes: fromStepCounter ? 'Step counter entry - screenshot optional' : null,
+            source: fromStepCounter ? 'step-counter' : 'manual' // Mark source
         };
 
+        // Ensure stepEntries is initialized
+        if (!this.stepEntries || !Array.isArray(this.stepEntries)) {
+            console.warn('stepEntries not initialized in saveStepsWithScreenshot, loading from localStorage...');
+            this.stepEntries = this.loadStepEntries();
+        }
+        
         this.stepEntries.unshift(stepEntry);
+        
+        console.log('=== Entry Creation (saveStepsWithScreenshot) ===');
+        console.log('Entry created:', stepEntry);
+        console.log('Total entries before save:', this.stepEntries.length);
+        
         this.saveStepEntries();
+        
+        // Verify save immediately
+        const verify = this.loadStepEntries();
+        console.log('Verification - Entries in localStorage after save:', verify.length);
+        console.log('Verification - Latest entry ID:', verify.length > 0 ? verify[0].id : 'none');
+        
+        if (verify.length === 0) {
+            console.error('ERROR: Entry was not saved to localStorage! Attempting manual save...');
+            // Try manual save
+            try {
+                localStorage.setItem('stepEntries', JSON.stringify([stepEntry]));
+                console.log('Manual save attempted');
+            } catch (e) {
+                console.error('Manual save also failed:', e);
+                alert('CRITICAL: Entry could not be saved to localStorage! Please check browser settings.');
+            }
+        }
 
         // Add activity
+        const activityMessage = fromStepCounter 
+            ? `Counted ${steps.toLocaleString()} steps using step counter (Pending validation)`
+            : `Added ${steps.toLocaleString()} steps (Pending validation)`;
+        
         this.currentUser.activities.unshift({
             date: new Date().toISOString(),
             steps: steps,
-            message: `Counted ${steps.toLocaleString()} steps using step counter (Pending validation)`,
+            message: activityMessage,
             entryId: entryId
         });
 
@@ -2226,7 +3319,7 @@ WoW-CSG Stepathon Team`,
 
         // Reset step counter
         this.resetStepCounter();
-        this.hideStepCounterPanel();
+        this.stopTimer();
         
         // Clear screenshot input if it was used
         if (document.getElementById('manualScreenshot')) {
@@ -2275,9 +3368,259 @@ WoW-CSG Stepathon Team`,
             notification.remove();
         }, 3000);
     }
+
+    // Bot Protection Functions
+    generateCaptcha(type = 'registration') {
+        const captcha = this.generateCaptchaValue();
+        const questionEl = document.getElementById(type === 'registration' ? 'captchaQuestion' : 'resetCaptchaQuestion');
+        const answerEl = document.getElementById(type === 'registration' ? 'captchaAnswer' : 'resetCaptchaAnswer');
+        
+        if (questionEl) {
+            questionEl.textContent = captcha.question;
+            questionEl.dataset.answer = captcha.answer;
+        }
+        
+        if (answerEl) {
+            answerEl.value = '';
+            answerEl.focus();
+        }
+        
+        return captcha;
+    }
+
+    generateCaptchaValue() {
+        // Generate simple math CAPTCHA
+        const num1 = Math.floor(Math.random() * 10) + 1; // 1-10
+        const num2 = Math.floor(Math.random() * 10) + 1; // 1-10
+        const operations = ['+', '-', '*'];
+        const operation = operations[Math.floor(Math.random() * operations.length)];
+        
+        let answer;
+        let question;
+        
+        switch(operation) {
+            case '+':
+                answer = num1 + num2;
+                question = `${num1} + ${num2} = ?`;
+                break;
+            case '-':
+                // Ensure positive result
+                const larger = Math.max(num1, num2);
+                const smaller = Math.min(num1, num2);
+                answer = larger - smaller;
+                question = `${larger} - ${smaller} = ?`;
+                break;
+            case '*':
+                // Use smaller numbers for multiplication
+                const n1 = Math.floor(Math.random() * 5) + 1; // 1-5
+                const n2 = Math.floor(Math.random() * 5) + 1; // 1-5
+                answer = n1 * n2;
+                question = `${n1} × ${n2} = ?`;
+                break;
+        }
+        
+        return { question, answer };
+    }
+
+    verifyCaptcha(type = 'registration') {
+        const questionEl = document.getElementById(type === 'registration' ? 'captchaQuestion' : 'resetCaptchaQuestion');
+        const answerEl = document.getElementById(type === 'registration' ? 'captchaAnswer' : 'resetCaptchaAnswer');
+        
+        if (!questionEl || !answerEl) {
+            return false;
+        }
+        
+        const correctAnswer = parseInt(questionEl.dataset.answer);
+        const userAnswer = parseInt(answerEl.value);
+        
+        return !isNaN(userAnswer) && userAnswer === correctAnswer;
+    }
+
+    refreshResetCaptcha() {
+        const modal = document.querySelector('.email-modal-overlay');
+        if (modal) {
+            const captcha = this.generateCaptchaValue();
+            const questionEl = document.getElementById('resetCaptchaQuestion');
+            const answerEl = document.getElementById('resetCaptchaAnswer');
+            
+            if (questionEl) {
+                questionEl.textContent = captcha.question;
+                modal.dataset.captchaAnswer = captcha.answer;
+            }
+            
+            if (answerEl) {
+                answerEl.value = '';
+            }
+        }
+    }
+
+    checkRateLimit(type) {
+        const now = Date.now();
+        const oneHourAgo = now - (60 * 60 * 1000);
+        const oneDayAgo = now - (24 * 60 * 60 * 1000);
+        
+        const attempts = type === 'registration' ? this.registrationAttempts : this.passwordResetAttempts;
+        
+        // Filter attempts within time windows
+        const attemptsLastHour = attempts.filter(attempt => attempt.timestamp > oneHourAgo);
+        const attemptsLastDay = attempts.filter(attempt => attempt.timestamp > oneDayAgo);
+        
+        // Check limits
+        if (attemptsLastHour.length >= this.maxAttemptsPerHour) {
+            const nextAttemptTime = new Date(attemptsLastHour[0].timestamp + (60 * 60 * 1000));
+            console.warn(`Rate limit exceeded: ${attemptsLastHour.length} attempts in the last hour`);
+            return false;
+        }
+        
+        if (attemptsLastDay.length >= this.maxAttemptsPerDay) {
+            console.warn(`Rate limit exceeded: ${attemptsLastDay.length} attempts in the last day`);
+            return false;
+        }
+        
+        return true;
+    }
+
+    recordAttempt(type, success) {
+        const attempts = type === 'registration' ? this.registrationAttempts : this.passwordResetAttempts;
+        
+        attempts.push({
+            timestamp: Date.now(),
+            success: success
+        });
+        
+        // Keep only last 24 hours of attempts
+        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+        const filteredAttempts = attempts.filter(attempt => attempt.timestamp > oneDayAgo);
+        
+        if (type === 'registration') {
+            this.registrationAttempts = filteredAttempts;
+            localStorage.setItem('registrationAttempts', JSON.stringify(this.registrationAttempts));
+        } else {
+            this.passwordResetAttempts = filteredAttempts;
+            localStorage.setItem('passwordResetAttempts', JSON.stringify(this.passwordResetAttempts));
+        }
+    }
 }
 
 // Initialize the app and make it globally accessible
 const app = new StepathonApp();
 window.app = app; // Make app accessible globally for onclick handlers
+
+// Debug helper functions (accessible from browser console)
+window.debugStepathon = {
+    // Check localStorage
+    checkLocalStorage: function() {
+        console.log('=== LocalStorage Debug ===');
+        const stepEntries = localStorage.getItem('stepEntries');
+        console.log('stepEntries key exists:', stepEntries !== null);
+        console.log('stepEntries value:', stepEntries);
+        console.log('stepEntries length:', stepEntries ? stepEntries.length : 0);
+        
+        if (stepEntries) {
+            try {
+                const parsed = JSON.parse(stepEntries);
+                console.log('Parsed entries:', parsed);
+                console.log('Is array:', Array.isArray(parsed));
+                console.log('Entry count:', Array.isArray(parsed) ? parsed.length : 'N/A');
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    console.log('First entry:', parsed[0]);
+                    console.log('All entry statuses:', parsed.map(e => e ? e.status : 'null'));
+                }
+            } catch (e) {
+                console.error('Error parsing stepEntries:', e);
+            }
+        }
+        
+        const participants = localStorage.getItem('participants');
+        console.log('participants key exists:', participants !== null);
+        if (participants) {
+            try {
+                const parsed = JSON.parse(participants);
+                console.log('Participants count:', Array.isArray(parsed) ? parsed.length : 'N/A');
+            } catch (e) {
+                console.error('Error parsing participants:', e);
+            }
+        }
+    },
+    
+    // Create a test entry
+    createTestEntry: function() {
+        console.log('Creating test entry...');
+        const testEntry = {
+            id: 'TEST_ENTRY_' + Date.now(),
+            userId: 'TEST_USER',
+            userName: 'Test User',
+            userEmail: 'test@example.com',
+            steps: 5000,
+            screenshot: null,
+            date: new Date().toISOString(),
+            status: 'pending',
+            validatedBy: null,
+            validatedAt: null,
+            lastModifiedBy: null,
+            lastModifiedAt: null,
+            notes: null,
+            source: 'manual'
+        };
+        
+        if (window.app) {
+            window.app.stepEntries = window.app.loadStepEntries();
+            window.app.stepEntries.unshift(testEntry);
+            window.app.saveStepEntries();
+            console.log('Test entry created:', testEntry);
+            console.log('Total entries now:', window.app.stepEntries.length);
+            
+            // Refresh dashboard if on admin page
+            if (window.location.pathname.includes('admin.html')) {
+                window.app.updateAdminDashboard();
+            }
+        } else {
+            console.error('App not available');
+        }
+    },
+    
+    // Clear all entries
+    clearEntries: function() {
+        if (confirm('Are you sure you want to clear all step entries?')) {
+            localStorage.removeItem('stepEntries');
+            if (window.app) {
+                window.app.stepEntries = [];
+                if (window.location.pathname.includes('admin.html')) {
+                    window.app.updateAdminDashboard();
+                }
+            }
+            console.log('All entries cleared');
+        }
+    },
+    
+    // Force refresh dashboard
+    refreshDashboard: function() {
+        if (window.app && typeof window.app.updateAdminDashboard === 'function') {
+            console.log('Forcing dashboard refresh...');
+            window.app.updateAdminDashboard();
+        } else {
+            console.error('App or updateAdminDashboard not available');
+        }
+    },
+    
+    // Show app state
+    showAppState: function() {
+        if (window.app) {
+            console.log('=== App State ===');
+            console.log('stepEntries:', window.app.stepEntries);
+            console.log('stepEntries length:', window.app.stepEntries ? window.app.stepEntries.length : 'N/A');
+            console.log('isAdmin:', window.app.isAdmin);
+            console.log('currentUser:', window.app.currentUser);
+        } else {
+            console.error('App not available');
+        }
+    }
+};
+
+console.log('Debug helpers available! Use window.debugStepathon to access:');
+console.log('  - checkLocalStorage() - Check localStorage data');
+console.log('  - createTestEntry() - Create a test entry');
+console.log('  - clearEntries() - Clear all entries');
+console.log('  - refreshDashboard() - Force refresh dashboard');
+console.log('  - showAppState() - Show app state');
 

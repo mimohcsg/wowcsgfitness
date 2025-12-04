@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+    <!-- EmailJS SDK -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -33,28 +35,53 @@
         <div class="main-content">
             <!-- Challenge Info Card -->
             <div class="card info-card animated-card">
-                <div class="card-header-icon">📅</div>
-                <h2>Challenge Details</h2>
+                <div class="challenge-header">
+                    <div class="card-header-icon-wrapper">
+                        <div class="card-header-icon">📅</div>
+                        <div class="icon-glow"></div>
+                    </div>
+                    <h2>Challenge Details</h2>
+                </div>
                 <div class="info-grid">
-                    <div class="info-item pulse-animation">
-                        <div class="info-icon">⏱️</div>
+                    <div class="info-item pulse-animation info-item-1">
+                        <div class="info-item-background"></div>
+                        <div class="info-icon-wrapper">
+                            <div class="info-icon">⏱️</div>
+                            <div class="icon-ripple"></div>
+                        </div>
                         <span class="label">Duration:</span>
                         <span class="value">30 Days</span>
+                        <div class="info-item-shine"></div>
                     </div>
-                    <div class="info-item pulse-animation" style="animation-delay: 0.1s;">
-                        <div class="info-icon">🚀</div>
+                    <div class="info-item pulse-animation info-item-2" style="animation-delay: 0.1s;">
+                        <div class="info-item-background"></div>
+                        <div class="info-icon-wrapper">
+                            <div class="info-icon">🚀</div>
+                            <div class="icon-ripple"></div>
+                        </div>
                         <span class="label">Start Date:</span>
                         <span class="value" id="startDate">Dec 1, 2025</span>
+                        <div class="info-item-shine"></div>
                     </div>
-                    <div class="info-item pulse-animation" style="animation-delay: 0.2s;">
-                        <div class="info-icon">🎯</div>
+                    <div class="info-item pulse-animation info-item-3" style="animation-delay: 0.2s;">
+                        <div class="info-item-background"></div>
+                        <div class="info-icon-wrapper">
+                            <div class="info-icon">🎯</div>
+                            <div class="icon-ripple"></div>
+                        </div>
                         <span class="label">End Date:</span>
                         <span class="value" id="endDate">Dec 30, 2025</span>
+                        <div class="info-item-shine"></div>
                     </div>
-                    <div class="info-item pulse-animation" style="animation-delay: 0.3s;">
-                        <div class="info-icon">🏁</div>
+                    <div class="info-item pulse-animation info-item-4" style="animation-delay: 0.3s;">
+                        <div class="info-item-background"></div>
+                        <div class="info-icon-wrapper">
+                            <div class="info-icon">🏁</div>
+                            <div class="icon-ripple"></div>
+                        </div>
                         <span class="label">Daily Goal:</span>
                         <span class="value">10,000 steps</span>
+                        <div class="info-item-shine"></div>
                     </div>
                 </div>
             </div>
@@ -64,40 +91,54 @@
                 <div class="login-tabs">
                     <button type="button" class="login-tab active" data-tab="user">👤 User Registration</button>
                     <button type="button" class="login-tab" data-tab="user-login">🔑 User Login</button>
-                    <button type="button" class="login-tab" data-tab="admin">🔐 Admin Login</button>
+                </div>
+                <div class="admin-link-section">
+                    <a href="admin.html" class="admin-link">🔐 Admin Access</a>
                 </div>
 
                 <!-- User Registration Form -->
                 <div id="userLoginForm" class="login-form active">
                     <h2>Join the Challenge</h2>
                     <form id="registrationForm">
+                        <!-- Honeypot field (hidden from users, bots might fill it) -->
+                        <input type="text" id="website" name="website" style="display: none;" tabindex="-1" autocomplete="off">
+                        
                         <div class="form-group">
                             <label for="employeeName">Full Name <span class="required">*</span></label>
-                            <input type="text" id="employeeName" placeholder="Enter your full name" required>
+                            <input type="text" id="employeeName" placeholder="Enter your full name" required autocomplete="name">
                         </div>
                         <div class="form-group">
                             <label for="employeeId">Employee ID <span class="required">*</span></label>
-                            <input type="text" id="employeeId" placeholder="Enter your Employee ID" required>
+                            <input type="text" id="employeeId" placeholder="Enter your Employee ID" required autocomplete="off">
                             <small class="form-hint">Each Employee ID can only be registered once.</small>
                         </div>
                         <div class="form-group">
                             <label for="emailId">Email ID <span class="required">*</span></label>
-                            <input type="email" id="emailId" placeholder="Enter your email address" required>
+                            <input type="email" id="emailId" placeholder="Enter your email address" required autocomplete="email">
                             <small class="form-hint">Your password will be sent to this email. Each email can only be used once.</small>
                         </div>
                         <div class="form-group">
                             <label for="username">Username <span class="required">*</span></label>
-                            <input type="text" id="username" placeholder="Choose a username" required minlength="3">
+                            <input type="text" id="username" placeholder="Choose a username" required minlength="3" autocomplete="username">
                             <small class="form-hint">Minimum 3 characters. Must be unique.</small>
                         </div>
                         <div class="form-group">
                             <label for="password">Password <span class="required">*</span></label>
-                            <input type="password" id="password" placeholder="Create a password" required minlength="6">
+                            <input type="password" id="password" placeholder="Create a password" required minlength="6" autocomplete="new-password">
                             <small class="form-hint">Minimum 6 characters</small>
                         </div>
                         <div class="form-group">
                             <label for="confirmPassword">Confirm Password <span class="required">*</span></label>
-                            <input type="password" id="confirmPassword" placeholder="Confirm your password" required>
+                            <input type="password" id="confirmPassword" placeholder="Confirm your password" required autocomplete="new-password">
+                        </div>
+                        <div class="form-group captcha-group">
+                            <label for="captchaAnswer">Security Check <span class="required">*</span></label>
+                            <div class="captcha-container">
+                                <div class="captcha-question" id="captchaQuestion"></div>
+                                <input type="number" id="captchaAnswer" placeholder="Enter answer" required autocomplete="off" min="0">
+                                <button type="button" class="btn btn-secondary btn-small" id="refreshCaptcha" title="Refresh CAPTCHA">🔄</button>
+                            </div>
+                            <small class="form-hint">Please solve the math problem to verify you're human.</small>
                         </div>
                         <button type="submit" class="btn btn-primary">Create Account & Join Challenge</button>
                     </form>
@@ -109,14 +150,14 @@
                     <form id="loginForm">
                         <div class="form-group">
                             <label for="loginUsername">Username <span class="required">*</span></label>
-                            <input type="text" id="loginUsername" placeholder="Enter your username" required>
+                            <input type="text" id="loginUsername" placeholder="Enter your username" required autocomplete="username">
                         </div>
                         <div class="form-group">
                             <label for="loginPassword">Password <span class="required">*</span></label>
-                            <input type="password" id="loginPassword" placeholder="Enter your password" required>
+                            <input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password">
                         </div>
                         <div class="form-options">
-                            <a href="#" id="forgotPasswordLink" class="forgot-password">Forgot Password?</a>
+                            <a href="#" id="forgotPasswordLink" class="forgot-password">🔑 Forgot Password?</a>
                         </div>
                         <button type="submit" class="btn btn-primary">Login</button>
                         <div class="switch-form">
@@ -125,21 +166,6 @@
                     </form>
                 </div>
 
-                <!-- Admin Login Form -->
-                <div id="adminLoginForm" class="login-form">
-                    <h2>Admin Access</h2>
-                    <form id="adminForm">
-                        <div class="form-group">
-                            <label for="adminUsername">Username <span class="required">*</span></label>
-                            <input type="text" id="adminUsername" placeholder="Enter admin username" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="adminPassword">Password <span class="required">*</span></label>
-                            <input type="password" id="adminPassword" placeholder="Enter admin password" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Login as Admin</button>
-                    </form>
-                </div>
             </div>
 
             <!-- Dashboard Section -->
@@ -214,69 +240,30 @@
 
                 <!-- Add Steps Form -->
                 <div class="add-steps-section">
-                    <h3>➕ Add Your Steps</h3>
+                    <h3>🏃‍♂️ ➕ Add Your Steps</h3>
                     
-                    <!-- Manual Entry -->
+                    <!-- Input Method Tabs -->
                     <div class="input-method-tabs">
-                        <button type="button" class="method-tab active" data-method="manual">Manual Entry</button>
+                        <button type="button" class="method-tab active" data-method="counter">👣 Count Steps</button>
+                        <button type="button" class="method-tab" data-method="manual">✏️ Manual Entry</button>
                         <button type="button" class="method-tab" data-method="screenshot">📷 From Screenshot</button>
                     </div>
 
                     <!-- Manual Entry Form -->
-                    <form id="addStepsForm" class="steps-form active">
+                    <form id="addStepsForm" class="steps-form" style="display: none;">
                         <div class="form-group">
                             <label for="stepsInput">Steps <span class="required">*</span></label>
-                            <div class="steps-input-wrapper">
-                                <input type="number" id="stepsInput" placeholder="Enter steps" min="0" required>
-                                <button type="button" class="btn btn-step-counter" id="startStepCounterBtn" title="Start step counter">
-                                    👣 Count Steps
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <!-- Step Counter Interface -->
-                        <div id="stepCounterPanel" class="step-counter-panel" style="display: none;">
-                            <div class="step-counter-header">
-                                <h4>🚶‍♂️ Live Step Counter</h4>
-                                <button type="button" class="btn-close-counter" id="closeStepCounterBtn">×</button>
-                            </div>
-                            <div class="step-counter-display">
-                                <div class="step-counter-value" id="liveStepCount">0</div>
-                                <div class="step-counter-label">Steps</div>
-                            </div>
-                            <div class="step-counter-controls">
-                                <button type="button" class="btn btn-counter-start" id="startCounterBtn">
-                                    ▶️ Start Counting
-                                </button>
-                                <button type="button" class="btn btn-counter-stop" id="stopCounterBtn" style="display: none;">
-                                    ⏸️ Stop Counting
-                                </button>
-                                <button type="button" class="btn btn-counter-reset" id="resetCounterBtn">
-                                    🔄 Reset
-                                </button>
-                            </div>
-                            <div class="step-counter-info">
-                                <p class="counter-status" id="counterStatus">Ready to start</p>
-                                <p class="counter-hint">Hold your phone while walking to count steps accurately</p>
-                            </div>
-                            <div class="step-counter-actions">
-                                <button type="button" class="btn btn-primary" id="useCounterStepsBtn" style="display: none;">
-                                    ✅ Use These Steps
-                                </button>
-                                <button type="button" class="btn btn-save-steps" id="saveCounterStepsBtn" style="display: none;">
-                                    💾 Save Steps & Update Leaderboard
-                                </button>
-                            </div>
+                            <input type="number" id="stepsInput" placeholder="Enter steps" min="0" required>
                         </div>
 
-                        <div class="form-group">
-                            <label for="manualScreenshot">Screenshot <span class="required">*</span></label>
+                        <div class="form-group" id="screenshotGroup">
+                            <label for="manualScreenshot">Screenshot <span class="required" id="screenshotRequired">*</span></label>
                             <div class="upload-area-small" id="manualUploadArea">
-                                <input type="file" id="manualScreenshot" accept="image/*" style="display: none;" required>
+                                <input type="file" id="manualScreenshot" accept="image/*" style="display: none;">
                                 <div class="upload-content-small">
                                     <div class="upload-icon-small">📷</div>
                                     <p class="upload-text-small">Click to upload screenshot</p>
-                                    <p class="upload-hint-small">Required for manual entry validation</p>
+                                    <p class="upload-hint-small" id="screenshotHint">Required for manual entry validation</p>
                                     <button type="button" class="btn btn-secondary" onclick="document.getElementById('manualScreenshot').click()">
                                         Choose Screenshot
                                     </button>
@@ -339,6 +326,90 @@
                                         <pre id="debugOcrText" style="white-space: pre-wrap; word-break: break-all; margin-top: 5px; font-size: 0.7rem;"></pre>
                                     </div>
                                 </details>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step Counter Form -->
+                    <div id="stepCounterForm" class="steps-form active" style="display: block;">
+                        <div class="step-counter-container">
+                            <div class="step-counter-header-section">
+                                <div class="step-counter-icon">🚶‍♂️</div>
+                                <h3>Live Step Counter</h3>
+                                <p class="step-counter-subtitle">Track your steps in real-time using your device's motion sensors</p>
+                            </div>
+
+                            <!-- Main Counter Display -->
+                            <div class="step-counter-display-section">
+                                <div class="step-counter-circle">
+                                    <div class="step-counter-value-large" id="liveStepCount">0</div>
+                                    <div class="step-counter-label-large">Steps</div>
+                                    <div class="step-counter-pulse" id="counterPulse"></div>
+                                </div>
+                                
+                                <!-- Timer Display -->
+                                <div class="step-counter-timer" id="counterTimer" style="display: none;">
+                                    <span class="timer-icon">⏱️</span>
+                                    <span class="timer-value" id="timerValue">00:00</span>
+                                </div>
+                            </div>
+
+                            <!-- Control Buttons -->
+                            <div class="step-counter-controls-section">
+                                <button type="button" class="btn btn-counter-start" id="startCounterBtn">
+                                    <span class="btn-icon">▶️</span>
+                                    <span class="btn-text">Start Counting</span>
+                                </button>
+                                <button type="button" class="btn btn-counter-stop" id="stopCounterBtn" style="display: none;">
+                                    <span class="btn-icon">⏸️</span>
+                                    <span class="btn-text">Stop Counting</span>
+                                </button>
+                                <button type="button" class="btn btn-counter-reset" id="resetCounterBtn">
+                                    <span class="btn-icon">🔄</span>
+                                    <span class="btn-text">Reset</span>
+                                </button>
+                            </div>
+
+                            <!-- Status and Info -->
+                            <div class="step-counter-info-section">
+                                <div class="counter-status-card" id="counterStatusCard">
+                                    <div class="status-icon">ℹ️</div>
+                                    <div class="status-content">
+                                        <p class="counter-status" id="counterStatus">Ready to start counting</p>
+                                        <p class="counter-hint" id="counterHint">Click "Start Counting" and hold your phone while walking</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="counter-tips">
+                                    <h4>💡 Tips for Accurate Counting:</h4>
+                                    <ul>
+                                        <li>Hold your phone in your hand or pocket</li>
+                                        <li>Walk naturally - the sensor detects your movement</li>
+                                        <li>Keep your phone unlocked while counting</li>
+                                        <li>Allow motion sensor permissions when prompted</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="step-counter-actions-section">
+                                <button type="button" class="btn btn-primary btn-large" id="useCounterStepsBtn" style="display: none;">
+                                    <span class="btn-icon">✅</span>
+                                    <span class="btn-text">Use These Steps in Manual Entry</span>
+                                </button>
+                                <button type="button" class="btn btn-success btn-large" id="saveCounterStepsBtn" style="display: none;">
+                                    <span class="btn-icon">💾</span>
+                                    <span class="btn-text">Save Steps & Update Leaderboard</span>
+                                </button>
+                            </div>
+
+                            <!-- Permission Note -->
+                            <div class="counter-permission-note" id="counterPermissionNote" style="display: none;">
+                                <div class="permission-icon">⚠️</div>
+                                <div class="permission-text">
+                                    <strong>Motion Sensor Permission Required</strong>
+                                    <p>Please allow motion sensor access to enable step counting. This is required for accurate step detection.</p>
+                                </div>
                             </div>
                         </div>
                     </div>

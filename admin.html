@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Admin Dashboard - WoW-CSG Stepathon Challenge</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-background">
+                <div class="animated-shapes">
+                    <div class="shape shape-1"></div>
+                    <div class="shape shape-2"></div>
+                    <div class="shape shape-3"></div>
+                </div>
+            </div>
+            <div class="logo-section">
+                <div class="csg-logo">
+                    <img src="CSG_Logo_K_outline.jpg" alt="CSG Logo" class="csg-logo-img">
+                </div>
+                <h1 class="animated-title">Admin Dashboard</h1>
+            </div>
+            <p class="subtitle">WoW-CSG Stepathon Challenge 2025</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Admin Login Card -->
+            <div class="card" id="adminLoginCard">
+                <h2>🔐 Admin Access</h2>
+                <form id="adminForm">
+                    <div class="form-group">
+                        <label for="adminUsername">Username <span class="required">*</span></label>
+                        <input type="text" id="adminUsername" placeholder="Enter admin username" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="adminPassword">Password <span class="required">*</span></label>
+                        <input type="password" id="adminPassword" placeholder="Enter admin password" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login as Admin</button>
+                    <div class="back-link-section">
+                        <a href="index.html" class="back-link">← Back to Main Site</a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Admin Dashboard -->
+            <div class="card admin-dashboard" id="adminDashboard" style="display: none;">
+                <div class="admin-header">
+                    <h2>🔐 Admin Dashboard</h2>
+                    <div class="admin-header-actions">
+                        <a href="index.html" class="btn btn-secondary">← Main Site</a>
+                        <button class="btn btn-secondary" id="adminLogoutBtn">Logout</button>
+                    </div>
+                </div>
+                
+                <div class="admin-stats">
+                    <div class="admin-stat-card">
+                        <div class="admin-stat-value" id="pendingCount">0</div>
+                        <div class="admin-stat-label">Pending Validations</div>
+                    </div>
+                    <div class="admin-stat-card">
+                        <div class="admin-stat-value" id="approvedCount">0</div>
+                        <div class="admin-stat-label">Approved Entries</div>
+                    </div>
+                    <div class="admin-stat-card">
+                        <div class="admin-stat-value" id="rejectedCount">0</div>
+                        <div class="admin-stat-label">Rejected Entries</div>
+                    </div>
+                </div>
+
+                <div class="admin-filters">
+                    <button class="filter-btn active" data-filter="pending">Pending</button>
+                    <button class="filter-btn" data-filter="approved">Approved</button>
+                    <button class="filter-btn" data-filter="rejected">Rejected</button>
+                    <button class="filter-btn" data-filter="all">All</button>
+                    <button class="filter-btn" id="refreshDashboardBtn" style="background: #4caf50;" title="Refresh Dashboard">🔄 Refresh</button>
+                    <button class="filter-btn" id="emailjsConfigBtn" style="background: #ff9800;">⚙️ Email Settings</button>
+                </div>
+
+                <div class="validation-list" id="validationList">
+                    <p class="no-entries">No entries to validate</p>
+                </div>
+            </div>
+
+            <!-- EmailJS Configuration Modal -->
+            <div class="card admin-dashboard" id="emailjsConfigModal" style="display: none;">
+                <div class="admin-header">
+                    <h2>⚙️ EmailJS Configuration</h2>
+                    <button class="btn btn-secondary" onclick="app.closeEmailJSConfig()">Close</button>
+                </div>
+                <div class="emailjs-config-content">
+                    <p class="email-info">Configure EmailJS to enable automatic email sending for user registrations.</p>
+                    <div class="emailjs-steps">
+                        <h3>Setup Steps:</h3>
+                        <ol>
+                            <li>Go to <a href="https://www.emailjs.com/" target="_blank">EmailJS.com</a> and create a free account</li>
+                            <li>Create an Email Service (Gmail, Outlook, etc.)</li>
+                            <li>Create an Email Template with these variables: <code>{{to_email}}, {{to_name}}, {{username}}, {{password}}, {{subject}}, {{message}}</code></li>
+                            <li>Get your Service ID, Template ID, and Public Key from EmailJS dashboard</li>
+                            <li>Enter them below and save</li>
+                        </ol>
+                    </div>
+                    <form id="emailjsConfigForm" onsubmit="event.preventDefault(); app.saveEmailJSConfig();">
+                        <div class="form-group">
+                            <label for="emailjsServiceId">EmailJS Service ID <span class="required">*</span></label>
+                            <input type="text" id="emailjsServiceId" placeholder="service_xxxxxxx" required>
+                            <small class="form-hint">Found in EmailJS Dashboard → Email Services</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="emailjsTemplateId">EmailJS Template ID <span class="required">*</span></label>
+                            <input type="text" id="emailjsTemplateId" placeholder="template_xxxxxxx" required>
+                            <small class="form-hint">Found in EmailJS Dashboard → Email Templates</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="emailjsPublicKey">EmailJS Public Key <span class="required">*</span></label>
+                            <input type="text" id="emailjsPublicKey" placeholder="xxxxxxxxxxxxx" required>
+                            <small class="form-hint">Found in EmailJS Dashboard → Account → API Keys → Public Key</small>
+                        </div>
+                        <div class="email-actions">
+                            <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+                            <button type="button" class="btn btn-secondary" onclick="app.testEmailJS()">🧪 Test Email</button>
+                            <button type="button" class="btn btn-danger" onclick="app.clearEmailJSConfig()">🗑️ Clear Configuration</button>
+                        </div>
+                    </form>
+                    <div id="emailjsStatus" class="emailjs-status"></div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>© 2025 CSG International | WoW-CSG Stepathon Challenge | Admin Portal</p>
+        </footer>
+    </div>
+
+    <script>
+        // Load script.js and wait for it to initialize
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = () => {
+                    console.log('script.js loaded successfully');
+                    // Wait a bit for app initialization
+                    setTimeout(() => {
+                        if (typeof window.app !== 'undefined' && window.app) {
+                            console.log('App is ready:', window.app);
+                            resolve();
+                        } else {
+                            // Try waiting a bit more
+                            let attempts = 0;
+                            const checkApp = setInterval(() => {
+                                attempts++;
+                                if (typeof window.app !== 'undefined' && window.app) {
+                                    console.log('App is ready after wait:', window.app);
+                                    clearInterval(checkApp);
+                                    resolve();
+                                } else if (attempts > 20) {
+                                    clearInterval(checkApp);
+                                    console.error('App failed to initialize after script load');
+                                    reject(new Error('App initialization failed'));
+                                }
+                            }, 50);
+                        }
+                    }, 100);
+                };
+                script.onerror = () => {
+                    console.error('Failed to load script.js');
+                    reject(new Error('Failed to load script.js'));
+                };
+                document.head.appendChild(script);
+            });
+        }
+
+        // Admin page specific initialization
+        function initAdminPage() {
+            console.log('Initializing admin page...');
+            console.log('window.app status:', typeof window.app, window.app);
+            
+            // Check if app is available
+            if (typeof window.app === 'undefined' || !window.app) {
+                console.error('App is not available. Attempting to create fallback...');
+                // Try to manually create app if StepathonApp class exists
+                if (typeof StepathonApp !== 'undefined') {
+                    console.log('StepathonApp class found, creating app instance...');
+                    window.app = new StepathonApp();
+                    console.log('App created manually:', window.app);
+                } else {
+                    alert('Error: Application class not found. Please ensure script.js is loaded correctly.');
+                    return;
+                }
+            }
+
+            const app = window.app;
+            console.log('Admin page initialized, app available:', app);
+            
+            // Check if already logged in as admin
+            const savedAdmin = localStorage.getItem('isAdmin');
+            if (savedAdmin === 'true') {
+                app.isAdmin = true;
+                app.showAdminDashboard();
+            }
+
+            // Admin login form
+            const adminForm = document.getElementById('adminForm');
+            if (adminForm) {
+                // Remove any existing listeners to prevent duplicates
+                const newForm = adminForm.cloneNode(true);
+                adminForm.parentNode.replaceChild(newForm, adminForm);
+                
+                document.getElementById('adminForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    console.log('Admin form submitted');
+                    const currentApp = window.app;
+                    if (currentApp && typeof currentApp.handleAdminLogin === 'function') {
+                        currentApp.handleAdminLogin();
+                    } else {
+                        alert('Error: Admin login function not available. Please refresh the page.');
+                        console.error('app.handleAdminLogin is not a function', currentApp);
+                    }
+                });
+            } else {
+                console.error('Admin form not found');
+            }
+
+            // Admin logout
+            const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+            if (adminLogoutBtn) {
+                adminLogoutBtn.addEventListener('click', () => {
+                    window.app.adminLogout();
+                });
+            }
+
+            // Admin filters
+            const adminFilters = document.querySelectorAll('.admin-filters .filter-btn');
+            adminFilters.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    if (e.target.id === 'emailjsConfigBtn') {
+                        window.app.showEmailJSConfig();
+                    } else if (e.target.id === 'refreshDashboardBtn') {
+                        window.app.updateAdminDashboard();
+                        if (window.app.showToast) {
+                            window.app.showToast('Dashboard refreshed');
+                        }
+                    } else if (e.target.dataset.filter) {
+                        const filter = e.target.dataset.filter;
+                        window.app.filterAdminEntries(filter);
+                    }
+                });
+            });
+            
+            // Refresh dashboard button (separate handler for reliability)
+            const refreshDashboardBtn = document.getElementById('refreshDashboardBtn');
+            if (refreshDashboardBtn) {
+                refreshDashboardBtn.addEventListener('click', () => {
+                    if (window.app && typeof window.app.updateAdminDashboard === 'function') {
+                        window.app.updateAdminDashboard();
+                        if (window.app.showToast) {
+                            window.app.showToast('Dashboard refreshed');
+                        }
+                    }
+                });
+            }
+
+            // Load EmailJS config on page load
+            if (typeof window.app.loadEmailJSConfig === 'function') {
+                window.app.loadEmailJSConfig();
+            }
+        }
+
+        // Load script and initialize
+        loadScript('script.js')
+            .then(() => {
+                console.log('Script loaded, initializing admin page...');
+                initAdminPage();
+            })
+            .catch((error) => {
+                console.error('Error loading script:', error);
+                alert('Error: Failed to load application script (script.js).\n\nPlease ensure:\n1. script.js exists in the same folder\n2. Check browser console for details\n\nError: ' + error.message);
+            });
+    </script>
+
+            const app = window.app;
+            console.log('Admin page initialized, app available:', app);
+            
+            // Check if already logged in as admin
+            const savedAdmin = localStorage.getItem('isAdmin');
+            if (savedAdmin === 'true') {
+                app.isAdmin = true;
+                app.showAdminDashboard();
+            }
+
+            // Admin login form
+            const adminForm = document.getElementById('adminForm');
+            if (adminForm) {
+                // Remove any existing listeners to prevent duplicates
+                const newForm = adminForm.cloneNode(true);
+                adminForm.parentNode.replaceChild(newForm, adminForm);
+                
+                document.getElementById('adminForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    console.log('Admin form submitted');
+                    const currentApp = window.app;
+                    if (currentApp && typeof currentApp.handleAdminLogin === 'function') {
+                        currentApp.handleAdminLogin();
+                    } else {
+                        alert('Error: Admin login function not available. Please refresh the page.');
+                        console.error('app.handleAdminLogin is not a function', currentApp);
+                    }
+                });
+            } else {
+                console.error('Admin form not found');
+            }
+
+            // Admin logout
+            const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+            if (adminLogoutBtn) {
+                adminLogoutBtn.addEventListener('click', () => {
+                    window.app.adminLogout();
+                });
+            }
+
+            // Admin filters
+            const adminFilters = document.querySelectorAll('.admin-filters .filter-btn');
+            adminFilters.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    if (e.target.id === 'emailjsConfigBtn') {
+                        window.app.showEmailJSConfig();
+                    } else if (e.target.dataset.filter) {
+                        const filter = e.target.dataset.filter;
+                        window.app.filterAdminEntries(filter);
+                    }
+                });
+            });
+
+            // Load EmailJS config on page load
+            if (typeof window.app.loadEmailJSConfig === 'function') {
+                window.app.loadEmailJSConfig();
+            }
+        }
+
+        // Start initialization when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initAdminPage);
+        } else {
+            // DOM is already ready, wait a bit for script.js to load
+            setTimeout(initAdminPage, 100);
+        }
+    </script>
+</body>
+</html>
+
