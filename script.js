@@ -994,16 +994,22 @@ class StepathonApp {
     }
 
     updateDates() {
-        const today = new Date();
-        const startDate = new Date(today);
-        startDate.setDate(today.getDate() - (today.getDate() - 1));
+        // Set start date to December 15, 2025
+        const startDate = new Date(2025, 11, 15); // Month is 0-indexed, so 11 = December
         
+        // Set end date to 7 days later (December 22, 2025)
         const endDate = new Date(startDate);
-        endDate.setMonth(endDate.getMonth() + 1);
-        endDate.setDate(0);
+        endDate.setDate(endDate.getDate() + 7);
 
-        document.getElementById('startDate').textContent = this.formatDate(startDate);
-        document.getElementById('endDate').textContent = this.formatDate(endDate);
+        const startDateElement = document.getElementById('startDate');
+        const endDateElement = document.getElementById('endDate');
+        
+        if (startDateElement) {
+            startDateElement.textContent = this.formatDate(startDate);
+        }
+        if (endDateElement) {
+            endDateElement.textContent = this.formatDate(endDate);
+        }
     }
 
     formatDate(date) {
@@ -2762,33 +2768,55 @@ Please keep this information secure.`;
     }
 
     calculateStreak(participant) {
-        if (!participant.dailySteps) return 0;
+        if (!participant.dailySteps || Object.keys(participant.dailySteps).length === 0) {
+            return 0;
+        }
         
-        const sortedDates = Object.keys(participant.dailySteps)
-            .map(d => new Date(d))
-            .sort((a, b) => b - a);
-
-        if (sortedDates.length === 0) return 0;
-
-        let streak = 0;
+        // Get today's date string (same format as stored: toDateString())
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-
-        for (let i = 0; i < sortedDates.length; i++) {
-            const date = new Date(sortedDates[i]);
+        const todayStr = today.toDateString();
+        
+        // Create a map of date strings to steps for easy lookup
+        const stepsByDate = {};
+        Object.keys(participant.dailySteps).forEach(dateStr => {
+            // Ensure we're using the correct date string format
+            const date = new Date(dateStr);
             date.setHours(0, 0, 0, 0);
+            const normalizedDateStr = date.toDateString();
+            stepsByDate[normalizedDateStr] = participant.dailySteps[dateStr];
+        });
+        
+        let streak = 0;
+        let checkDate = new Date(today);
+        const dailyGoal = 10000;
+        
+        // Check consecutive days starting from today (or yesterday if today hasn't been completed)
+        // First, check if today has steps >= goal
+        if (stepsByDate[todayStr] && stepsByDate[todayStr] >= dailyGoal) {
+            // Start counting from today
+            checkDate = new Date(today);
+        } else {
+            // If today doesn't have enough steps, start from yesterday
+            checkDate.setDate(checkDate.getDate() - 1);
+        }
+        
+        // Count consecutive days backwards
+        while (true) {
+            const checkDateStr = checkDate.toDateString();
+            const steps = stepsByDate[checkDateStr];
             
-            const expectedDate = new Date(today);
-            expectedDate.setDate(today.getDate() - i);
-
-            if (date.getTime() === expectedDate.getTime() && 
-                participant.dailySteps[sortedDates[i].toString()] >= 10000) {
+            // If this date has steps >= goal, increment streak
+            if (steps && steps >= dailyGoal) {
                 streak++;
+                // Move to previous day
+                checkDate.setDate(checkDate.getDate() - 1);
             } else {
+                // No more consecutive days
                 break;
             }
         }
-
+        
         return streak;
     }
 
