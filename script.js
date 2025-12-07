@@ -46,10 +46,16 @@ class StepathonApp {
     init() {
         this.setupEventListeners();
         // Only run these on main page, not admin page
+        // Use requestAnimationFrame for better performance
         if (!window.location.pathname.includes('admin.html')) {
-            this.checkCurrentUser();
-            this.updateLeaderboard();
-            this.updateDates();
+            requestAnimationFrame(() => {
+                this.checkCurrentUser();
+                // Defer heavy operations
+                setTimeout(() => {
+                    this.updateLeaderboard();
+                    this.updateDates();
+                }, 100);
+            });
         }
     }
 
@@ -241,16 +247,7 @@ class StepathonApp {
             });
         }
 
-        const useCounterStepsBtn = document.getElementById('useCounterStepsBtn');
-        if (useCounterStepsBtn) {
-            // Disabled - users cannot use step counter steps in manual entry
-            useCounterStepsBtn.style.display = 'none';
-            useCounterStepsBtn.disabled = true;
-            // Remove event listener to prevent functionality
-            // useCounterStepsBtn.addEventListener('click', () => {
-            //     this.useCounterSteps();
-            // });
-        }
+        // Button removed - no longer needed
 
         const saveCounterStepsBtn = document.getElementById('saveCounterStepsBtn');
         if (saveCounterStepsBtn) {
@@ -2606,7 +2603,7 @@ Please keep this information secure.`;
         }
 
         content.innerHTML = `
-            <form id="editUserForm" onsubmit="event.preventDefault(); app.saveUserDetails('${userId}');">
+            <form id="editUserForm" onsubmit="event.preventDefault(); app.saveUserDetails('${actualUserId}');">
                 <div class="form-section">
                     <h3>👤 Personal Information</h3>
                     <div class="form-group">
@@ -2659,7 +2656,7 @@ Please keep this information secure.`;
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">💾 Save Changes</button>
                     <button type="button" class="btn btn-secondary" onclick="app.closeUserDetailsModal()">Cancel</button>
-                    <button type="button" class="btn btn-danger" onclick="app.deleteUser('${userId}')">🗑️ Delete User</button>
+                    <button type="button" class="btn btn-danger" onclick="app.deleteUser('${actualUserId}')">🗑️ Delete User</button>
                 </div>
             </form>
         `;
@@ -2668,8 +2665,28 @@ Please keep this information secure.`;
     }
 
     saveUserDetails(userId) {
-        const user = this.participants.find(p => (p.id === userId) || (p.employeeId === userId));
+        // Reload participants to ensure we have the latest data
+        this.participants = this.loadParticipants();
+        
+        // Handle user_ prefix from index-based IDs
+        let searchId = userId;
+        if (userId.startsWith('user_')) {
+            const index = parseInt(userId.replace('user_', ''));
+            const userByIndex = this.participants[index];
+            if (userByIndex) {
+                searchId = userByIndex.id || userByIndex.employeeId || userId;
+            }
+        }
+        
+        const user = this.participants.find(p => 
+            (p.id && p.id === searchId) || 
+            (p.employeeId && p.employeeId === searchId) ||
+            (p.id && String(p.id) === String(searchId)) ||
+            (p.employeeId && String(p.employeeId) === String(searchId))
+        );
+        
         if (!user) {
+            console.error('User not found for save. Search ID:', searchId);
             alert('User not found!');
             return;
         }
@@ -2715,19 +2732,26 @@ Please keep this information secure.`;
         user.password = password;
 
         // Save to localStorage
-        const index = this.participants.findIndex(p => (p.id === userId) || (p.employeeId === userId));
+        const index = this.participants.findIndex(p => 
+            (p.id && p.id === searchId) || 
+            (p.employeeId && p.employeeId === searchId) ||
+            (p.id && String(p.id) === String(searchId)) ||
+            (p.employeeId && String(p.employeeId) === String(searchId))
+        );
         if (index !== -1) {
             this.participants[index] = user;
             localStorage.setItem('participants', JSON.stringify(this.participants));
             
             // If this is the current user, update currentUser
-            if (this.currentUser && (this.currentUser.id === userId || this.currentUser.employeeId === userId)) {
+            if (this.currentUser && (this.currentUser.id === searchId || this.currentUser.employeeId === searchId)) {
                 this.currentUser = user;
             }
 
             alert('User details updated successfully!');
             this.closeUserDetailsModal();
             this.loadUsersList();
+        } else {
+            alert('Error: Could not find user to update!');
         }
     }
 
@@ -3470,7 +3494,6 @@ Please keep this information secure.`;
         // Update UI
         const startBtn = document.getElementById('startCounterBtn');
         const stopBtn = document.getElementById('stopCounterBtn');
-        const useBtn = document.getElementById('useCounterStepsBtn');
         const saveBtn = document.getElementById('saveCounterStepsBtn');
         const timerEl = document.getElementById('counterTimer');
         const pulseEl = document.getElementById('counterPulse');
@@ -3478,11 +3501,6 @@ Please keep this information secure.`;
         
         if (startBtn) startBtn.style.display = 'none';
         if (stopBtn) stopBtn.style.display = 'inline-block';
-        if (useBtn) {
-            useBtn.style.display = 'none';
-            useBtn.disabled = true;
-            useBtn.style.setProperty('display', 'none', 'important');
-        }
         if (saveBtn) saveBtn.style.display = 'none';
         if (timerEl) timerEl.style.display = 'flex';
         if (pulseEl) pulseEl.classList.add('active');
@@ -3604,11 +3622,6 @@ Please keep this information secure.`;
         if (valueEl) valueEl.classList.remove('active');
         
         if (this.stepCounter.stepCount > 0) {
-            if (useBtn) {
-                useBtn.style.display = 'none'; // Disabled - users cannot use step counter steps in manual entry
-                useBtn.disabled = true;
-                useBtn.style.setProperty('display', 'none', 'important');
-            }
             if (saveBtn) saveBtn.style.display = 'block';
         }
 
@@ -3632,11 +3645,9 @@ Please keep this information secure.`;
         this.updateCounterStatus('Counter reset. Ready to start.');
         this.updateCounterHint('Click "Start Counting" and hold your phone while walking');
         
-        const useBtn = document.getElementById('useCounterStepsBtn');
         const saveBtn = document.getElementById('saveCounterStepsBtn');
         const timerEl = document.getElementById('counterTimer');
         
-        if (useBtn) useBtn.style.display = 'none';
         if (saveBtn) saveBtn.style.display = 'none';
         if (timerEl) timerEl.style.display = 'none';
         
