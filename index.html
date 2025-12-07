@@ -7,6 +7,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>WoW-CSG Stepathon Challenge 2025</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="apple-touch-icon" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
@@ -34,16 +37,16 @@
 
         <div class="main-content">
             <!-- Challenge Info Card -->
-            <div class="card info-card animated-card">
+            <div class="card info-card animated-card" tabindex="-1">
                 <div class="challenge-header">
                     <div class="card-header-icon-wrapper">
-                        <div class="card-header-icon">📅</div>
+                        <div class="card-header-icon">📋</div>
                         <div class="icon-glow"></div>
                     </div>
                     <h2>Challenge Details</h2>
                 </div>
                 <div class="info-grid">
-                    <div class="info-item pulse-animation info-item-1">
+                    <div class="info-item pulse-animation info-item-1" tabindex="-1">
                         <div class="info-item-background"></div>
                         <div class="info-icon-wrapper">
                             <div class="info-icon">⏱️</div>
@@ -53,7 +56,7 @@
                         <span class="value">1 Week</span>
                         <div class="info-item-shine"></div>
                     </div>
-                    <div class="info-item pulse-animation info-item-2" style="animation-delay: 0.1s;">
+                    <div class="info-item pulse-animation info-item-2" style="animation-delay: 0.1s;" tabindex="-1">
                         <div class="info-item-background"></div>
                         <div class="info-icon-wrapper">
                             <div class="info-icon">🚀</div>
@@ -63,7 +66,7 @@
                         <span class="value" id="startDate">Dec 15, 2025</span>
                         <div class="info-item-shine"></div>
                     </div>
-                    <div class="info-item pulse-animation info-item-3" style="animation-delay: 0.2s;">
+                    <div class="info-item pulse-animation info-item-3" style="animation-delay: 0.2s;" tabindex="-1">
                         <div class="info-item-background"></div>
                         <div class="info-icon-wrapper">
                             <div class="info-icon">🎯</div>
@@ -73,7 +76,7 @@
                         <span class="value" id="endDate">Dec 22, 2025</span>
                         <div class="info-item-shine"></div>
                     </div>
-                    <div class="info-item pulse-animation info-item-4" style="animation-delay: 0.3s;">
+                    <div class="info-item pulse-animation info-item-4" style="animation-delay: 0.3s;" tabindex="-1">
                         <div class="info-item-background"></div>
                         <div class="info-icon-wrapper">
                             <div class="info-icon">🏁</div>
@@ -88,9 +91,12 @@
 
             <!-- Login Section -->
             <div class="card" id="loginCard">
-                <div class="login-tabs">
-                    <button type="button" class="login-tab active" data-tab="user">👤 User Registration</button>
-                    <button type="button" class="login-tab" data-tab="user-login">🔑 User Login</button>
+                <div class="login-header-with-help">
+                    <div class="login-tabs">
+                        <button type="button" class="login-tab active" data-tab="user">👤 User Registration</button>
+                        <button type="button" class="login-tab" data-tab="user-login">🔑 User Login</button>
+                    </div>
+                    <button class="btn btn-secondary btn-small" id="loginHelpBtn" title="Get Help">❓ Help</button>
                 </div>
 
                 <!-- User Registration Form -->
@@ -169,7 +175,10 @@
             <div class="card dashboard" id="dashboardCard" style="display: none;">
                 <div class="dashboard-header">
                     <h2>Welcome, <span id="userName"></span>! 👋</h2>
-                    <button class="btn btn-secondary" id="logoutBtn">Logout</button>
+                    <div class="dashboard-header-actions">
+                        <button class="btn btn-secondary" id="helpBtn" title="Get Help">❓ Help</button>
+                        <button class="btn btn-secondary" id="logoutBtn">Logout</button>
+                    </div>
                 </div>
 
                 <!-- Stats Cards -->
@@ -390,7 +399,8 @@
 
                             <!-- Action Buttons -->
                             <div class="step-counter-actions-section">
-                                <button type="button" class="btn btn-primary btn-large" id="useCounterStepsBtn" style="display: none;">
+                                <!-- Use These Steps in Manual Entry button disabled - users must save directly -->
+                                <button type="button" class="btn btn-primary btn-large" id="useCounterStepsBtn" style="display: none !important;" disabled>
                                     <span class="btn-icon">✅</span>
                                     <span class="btn-text">Use These Steps in Manual Entry</span>
                                 </button>
@@ -495,7 +505,79 @@
         <footer>
             <p>© 2025 CSG International | WoW-CSG Stepathon Challenge | Let's get moving together! 💪</p>
             <p class="footer-subtext">Powered by CSG - Connecting People, Enabling Possibilities</p>
+            <p class="footer-help">
+                <a href="#" id="footerHelpLink" class="help-link">❓ Need Help? Contact us at wow-csg@csgi.com</a>
+            </p>
         </footer>
+
+        <!-- Help Modal -->
+        <div class="modal-overlay" id="helpModal" style="display: none;">
+            <div class="modal-content help-modal">
+                <div class="modal-header">
+                    <h2>❓ Help & Support</h2>
+                    <button class="modal-close" onclick="app.closeHelpModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="help-section">
+                        <h3>📧 Contact Support</h3>
+                        <p>If you need assistance with the Stepathon Challenge, please reach out to us:</p>
+                        <div class="contact-info">
+                            <div class="contact-item">
+                                <strong>Email:</strong>
+                                <a href="mailto:wow-csg@csgi.com?subject=Stepathon Challenge Support&body=Hello,%0D%0A%0D%0AI need help with:" class="contact-link">
+                                    wow-csg@csgi.com
+                                </a>
+                                <button class="btn btn-primary btn-small" onclick="app.openEmailClient()" style="margin-top: 10px;">
+                                    📧 Open Email Client
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="help-section">
+                        <h3>❓ Frequently Asked Questions</h3>
+                        <div class="faq-item">
+                            <strong>Q: How do I add my steps?</strong>
+                            <p>A: You can add steps using three methods: Step Counter (real-time tracking), Manual Entry, or by uploading a screenshot from your fitness app.</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q: Do I need to provide a screenshot?</strong>
+                            <p>A: Screenshots are required for manual entry validation. However, if you use the Step Counter feature, screenshots are optional.</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q: How is my daily goal calculated?</strong>
+                            <p>A: The daily goal is set to 10,000 steps. You can track your progress in the Daily Goal Progress section.</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q: What if I forgot my password?</strong>
+                            <p>A: Please contact support at wow-csg@csgi.com to reset your password.</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q: How do I check my ranking?</strong>
+                            <p>A: Your current rank is displayed in the stats cards. You can also view the full leaderboard below your dashboard.</p>
+                        </div>
+                    </div>
+
+                    <div class="help-section">
+                        <h3>💡 Tips</h3>
+                        <ul class="help-tips">
+                            <li>Use the Step Counter feature for real-time step tracking</li>
+                            <li>Take screenshots of your fitness app to validate manual entries</li>
+                            <li>Check the leaderboard regularly to see your progress</li>
+                            <li>Maintain your daily streak by logging steps every day</li>
+                            <li>Contact support if you encounter any technical issues</li>
+                        </ul>
+                    </div>
+
+                    <div class="help-actions">
+                        <a href="mailto:wow-csg@csgi.com?subject=Stepathon Challenge Support&body=Hello,%0D%0A%0D%0AI need help with:" class="btn btn-primary">
+                            📧 Contact Support
+                        </a>
+                        <button class="btn btn-secondary" onclick="app.closeHelpModal()">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>

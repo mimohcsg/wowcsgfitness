@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="#003366"/>
+  
+  <!-- Walking/running person icon -->
+  <g transform="translate(50, 50)">
+    <!-- Head -->
+    <circle cx="0" cy="-20" r="8" fill="#ffffff"/>
+    
+    <!-- Body -->
+    <line x1="0" y1="-12" x2="0" y2="15" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    
+    <!-- Arms in running position -->
+    <line x1="0" y1="-5" x2="-12" y2="5" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="0" y1="-5" x2="12" y2="8" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    
+    <!-- Legs in running position -->
+    <line x1="0" y1="15" x2="-10" y2="30" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="0" y1="15" x2="8" y2="32" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    
+    <!-- Foot steps -->
+    <circle cx="-8" cy="32" r="3" fill="#004080" opacity="0.6"/>
+    <circle cx="6" cy="34" r="3" fill="#004080" opacity="0.6"/>
+  </g>
+  
+  <!-- Motion lines -->
+  <path d="M 20 50 Q 30 45, 35 50" stroke="#004080" stroke-width="2" fill="none" opacity="0.5"/>
+  <path d="M 65 50 Q 70 45, 75 50" stroke="#004080" stroke-width="2" fill="none" opacity="0.5"/>
+</svg>
+

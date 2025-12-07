@@ -28,8 +28,10 @@ class StepathonApp {
             isRunning: false,
             stepCount: 0,
             lastAcceleration: { x: 0, y: 0, z: 0 },
-            threshold: 0.5, // Sensitivity threshold
+            threshold: 1.2, // Increased threshold to filter out small movements
+            minVerticalChange: 0.8, // Minimum vertical (Z-axis) change required for a step
             stepHistory: [],
+            accelerationHistory: [], // Track acceleration patterns
             startTime: null,
             permissionGranted: false
         };
@@ -144,6 +146,31 @@ class StepathonApp {
             });
         }
 
+        // Help button
+        const helpBtn = document.getElementById('helpBtn');
+        if (helpBtn) {
+            helpBtn.addEventListener('click', () => {
+                this.showHelpModal();
+            });
+        }
+
+        // Footer help link
+        const footerHelpLink = document.getElementById('footerHelpLink');
+        if (footerHelpLink) {
+            footerHelpLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.showHelpModal();
+            });
+        }
+
+        // Login help button
+        const loginHelpBtn = document.getElementById('loginHelpBtn');
+        if (loginHelpBtn) {
+            loginHelpBtn.addEventListener('click', () => {
+                this.showHelpModal();
+            });
+        }
+
         // Admin logout
         const adminLogoutBtn = document.getElementById('adminLogoutBtn');
         if (adminLogoutBtn) {
@@ -216,9 +243,13 @@ class StepathonApp {
 
         const useCounterStepsBtn = document.getElementById('useCounterStepsBtn');
         if (useCounterStepsBtn) {
-            useCounterStepsBtn.addEventListener('click', () => {
-                this.useCounterSteps();
-            });
+            // Disabled - users cannot use step counter steps in manual entry
+            useCounterStepsBtn.style.display = 'none';
+            useCounterStepsBtn.disabled = true;
+            // Remove event listener to prevent functionality
+            // useCounterStepsBtn.addEventListener('click', () => {
+            //     this.useCounterSteps();
+            // });
         }
 
         const saveCounterStepsBtn = document.getElementById('saveCounterStepsBtn');
@@ -996,24 +1027,42 @@ class StepathonApp {
     updateDates() {
         // Set start date to December 15, 2025
         const startDate = new Date(2025, 11, 15); // Month is 0-indexed, so 11 = December
+        startDate.setHours(0, 0, 0, 0); // Normalize time
         
         // Set end date to 7 days later (December 22, 2025)
         const endDate = new Date(startDate);
         endDate.setDate(endDate.getDate() + 7);
+        endDate.setHours(0, 0, 0, 0); // Normalize time
 
         const startDateElement = document.getElementById('startDate');
         const endDateElement = document.getElementById('endDate');
         
         if (startDateElement) {
-            startDateElement.textContent = this.formatDate(startDate);
+            const formattedStart = this.formatDate(startDate);
+            startDateElement.textContent = formattedStart;
+            console.log('Start date set to:', formattedStart, startDate);
         }
         if (endDateElement) {
-            endDateElement.textContent = this.formatDate(endDate);
+            const formattedEnd = this.formatDate(endDate);
+            endDateElement.textContent = formattedEnd;
+            console.log('End date set to:', formattedEnd, endDate);
         }
     }
 
     formatDate(date) {
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        // Ensure date is valid
+        if (!date || isNaN(date.getTime())) {
+            console.error('Invalid date provided to formatDate');
+            return 'Invalid Date';
+        }
+        
+        // Use explicit formatting to avoid locale issues
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const month = months[date.getMonth()];
+        const day = date.getDate();
+        const year = date.getFullYear();
+        
+        return `${month} ${day}, ${year}`;
     }
 
     checkCurrentUser() {
@@ -1907,7 +1956,10 @@ Please keep this information secure.`;
         const today = new Date().toDateString();
         const todaySteps = this.currentUser.dailySteps[today] || 0;
         const totalSteps = this.currentUser.totalSteps || 0;
+        
+        // Always recalculate streak to ensure it's up to date
         const streak = this.calculateStreak(this.currentUser);
+        this.currentUser.streak = streak; // Update the stored streak value
 
         // Animated number counting
         this.animateNumber('todaySteps', todaySteps);
@@ -2312,6 +2364,8 @@ Please keep this information secure.`;
                 adminDashboard.style.display = 'block';
             }
         }
+        // Show validations tab by default
+        this.showValidationsTab();
         this.updateAdminDashboard();
     }
 
@@ -2371,6 +2425,399 @@ Please keep this information secure.`;
         });
         document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
         this.renderValidationList(filter);
+    }
+
+    // User Management Functions
+    showUsersTab() {
+        document.querySelectorAll('.admin-tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.getElementById('usersTab').classList.add('active');
+        document.querySelector('[data-tab="users"]').classList.add('active');
+        this.loadUsersList();
+    }
+
+    showValidationsTab() {
+        document.querySelectorAll('.admin-tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.getElementById('validationsTab').classList.add('active');
+        document.querySelector('[data-tab="validations"]').classList.add('active');
+    }
+
+    loadUsersList() {
+        const usersList = document.getElementById('usersList');
+        if (!usersList) {
+            console.error('usersList element not found!');
+            return;
+        }
+
+        try {
+            this.participants = this.loadParticipants();
+            console.log('Loaded participants:', this.participants);
+            console.log('Participants count:', this.participants ? this.participants.length : 0);
+            
+            if (!this.participants || this.participants.length === 0) {
+                usersList.innerHTML = '<p class="no-entries">No users registered yet.</p>';
+                return;
+            }
+
+            let html = '<div class="users-grid">';
+            this.participants.forEach((user, index) => {
+                try {
+                    const totalSteps = user.totalSteps || 0;
+                    const dailyStepsCount = user.dailySteps ? Object.keys(user.dailySteps).length : 0;
+                    const lastActivity = user.lastActivity ? new Date(user.lastActivity).toLocaleDateString() : 'Never';
+                    
+                    // Use a safe identifier for the user
+                    const userId = user.id || user.employeeId || `user_${index}`;
+                    // Escape any special characters in the onclick handler
+                    const safeUserId = String(userId).replace(/'/g, "\\'");
+                    
+                    html += `
+                        <div class="user-card">
+                            <div class="user-card-header">
+                                <h4>${(user.name || 'Unknown User').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h4>
+                                <button class="btn btn-small btn-primary" onclick="app.viewUserDetails('${safeUserId}')">View Details</button>
+                            </div>
+                            <div class="user-card-info">
+                                <div class="user-info-item">
+                                    <strong>Username:</strong> ${(user.username || 'N/A').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+                                </div>
+                                <div class="user-info-item">
+                                    <strong>Email:</strong> ${(user.email || user.emailId || 'N/A').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+                                </div>
+                                <div class="user-info-item">
+                                    <strong>Employee ID:</strong> ${(user.id || user.employeeId || 'N/A').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+                                </div>
+                                <div class="user-info-item">
+                                    <strong>Total Steps:</strong> ${totalSteps.toLocaleString()}
+                                </div>
+                                <div class="user-info-item">
+                                    <strong>Active Days:</strong> ${dailyStepsCount}
+                                </div>
+                                <div class="user-info-item">
+                                    <strong>Last Activity:</strong> ${lastActivity}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } catch (error) {
+                    console.error('Error rendering user card:', error, user);
+                }
+            });
+            html += '</div>';
+            usersList.innerHTML = html;
+            console.log('Users list rendered successfully');
+        } catch (error) {
+            console.error('Error in loadUsersList:', error);
+            usersList.innerHTML = `<p class="no-entries" style="color: red;">Error loading users: ${error.message}. Check console for details.</p>`;
+        }
+    }
+
+    viewUserDetails(userId) {
+        // Reload participants to ensure we have the latest data
+        this.participants = this.loadParticipants();
+        
+        // Handle user_ prefix from index-based IDs
+        let searchId = userId;
+        if (userId.startsWith('user_')) {
+            const index = parseInt(userId.replace('user_', ''));
+            const user = this.participants[index];
+            if (user) {
+                searchId = user.id || user.employeeId || userId;
+            }
+        }
+        
+        const user = this.participants.find(p => 
+            (p.id && p.id === searchId) || 
+            (p.employeeId && p.employeeId === searchId) ||
+            (p.id && String(p.id) === String(searchId)) ||
+            (p.employeeId && String(p.employeeId) === String(searchId))
+        );
+        
+        if (!user) {
+            console.error('User not found. Search ID:', searchId, 'All participants:', this.participants);
+            alert('User not found! Please try refreshing the users list.');
+            return;
+        }
+
+        // Get all activities for this user
+        this.stepEntries = this.loadStepEntries();
+        const actualUserId = user.id || user.employeeId || searchId;
+        const userActivities = this.stepEntries.filter(entry => {
+            const entryUserId = entry.userId || entry.userId;
+            return entryUserId === actualUserId || 
+                   entryUserId === user.id || 
+                   entryUserId === user.employeeId ||
+                   String(entryUserId) === String(actualUserId) ||
+                   String(entryUserId) === String(user.id) ||
+                   String(entryUserId) === String(user.employeeId);
+        }).sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        console.log('User activities found:', userActivities.length, 'for user:', actualUserId);
+
+        const modal = document.getElementById('userDetailsModal');
+        const content = document.getElementById('userDetailsContent');
+        
+        if (!modal || !content) return;
+
+        const totalSteps = user.totalSteps || 0;
+        const dailySteps = user.dailySteps || {};
+        const dailyStepsCount = Object.keys(dailySteps).length;
+        const streak = this.calculateStreak(user);
+        
+        let activitiesHtml = '';
+        if (userActivities.length > 0) {
+            activitiesHtml = '<div class="user-activities-section"><h3>📝 All Activities</h3><div class="activities-list">';
+            userActivities.forEach(activity => {
+                const date = new Date(activity.date).toLocaleDateString();
+                const time = new Date(activity.date).toLocaleTimeString();
+                const status = activity.status || 'pending';
+                const statusClass = status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'pending';
+                
+                activitiesHtml += `
+                    <div class="activity-entry ${statusClass}">
+                        <div class="activity-header">
+                            <span class="activity-date">${date} ${time}</span>
+                            <span class="activity-status ${statusClass}">${status}</span>
+                        </div>
+                        <div class="activity-details">
+                            <strong>Steps:</strong> ${activity.steps.toLocaleString()}<br>
+                            <strong>Source:</strong> ${activity.source || 'manual'}<br>
+                            ${activity.notes ? `<strong>Notes:</strong> ${activity.notes}<br>` : ''}
+                            ${activity.screenshot ? '<span class="has-screenshot">📷 Has Screenshot</span>' : '<span class="no-screenshot">No Screenshot</span>'}
+                        </div>
+                        <div class="activity-actions">
+                            <button class="btn btn-small btn-secondary" onclick="app.deleteUserActivity('${activity.id}', '${actualUserId}')">Delete</button>
+                        </div>
+                    </div>
+                `;
+            });
+            activitiesHtml += '</div></div>';
+        } else {
+            activitiesHtml = '<div class="user-activities-section"><h3>📝 All Activities</h3><p class="no-entries">No activities recorded yet.</p></div>';
+        }
+
+        content.innerHTML = `
+            <form id="editUserForm" onsubmit="event.preventDefault(); app.saveUserDetails('${userId}');">
+                <div class="form-section">
+                    <h3>👤 Personal Information</h3>
+                    <div class="form-group">
+                        <label>Full Name <span class="required">*</span></label>
+                        <input type="text" id="editUserName" value="${user.name || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email <span class="required">*</span></label>
+                        <input type="email" id="editUserEmail" value="${user.email || user.emailId || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Employee ID <span class="required">*</span></label>
+                        <input type="text" id="editUserEmployeeId" value="${user.id || user.employeeId || ''}" required>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>🔐 Account Credentials</h3>
+                    <div class="form-group">
+                        <label>Username <span class="required">*</span></label>
+                        <input type="text" id="editUserUsername" value="${user.username || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password <span class="required">*</span></label>
+                        <input type="text" id="editUserPassword" value="${user.password || ''}" required>
+                        <small class="form-hint">Current password is visible. Change it to update.</small>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>📊 Statistics</h3>
+                    <div class="user-stats-grid">
+                        <div class="stat-item">
+                            <strong>Total Steps:</strong> ${totalSteps.toLocaleString()}
+                        </div>
+                        <div class="stat-item">
+                            <strong>Active Days:</strong> ${dailyStepsCount}
+                        </div>
+                        <div class="stat-item">
+                            <strong>Current Streak:</strong> ${streak} days
+                        </div>
+                        <div class="stat-item">
+                            <strong>Last Activity:</strong> ${user.lastActivity ? new Date(user.lastActivity).toLocaleString() : 'Never'}
+                        </div>
+                    </div>
+                </div>
+
+                ${activitiesHtml}
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+                    <button type="button" class="btn btn-secondary" onclick="app.closeUserDetailsModal()">Cancel</button>
+                    <button type="button" class="btn btn-danger" onclick="app.deleteUser('${userId}')">🗑️ Delete User</button>
+                </div>
+            </form>
+        `;
+
+        modal.style.display = 'flex';
+    }
+
+    saveUserDetails(userId) {
+        const user = this.participants.find(p => (p.id === userId) || (p.employeeId === userId));
+        if (!user) {
+            alert('User not found!');
+            return;
+        }
+
+        const name = document.getElementById('editUserName').value.trim();
+        const email = document.getElementById('editUserEmail').value.trim();
+        const employeeId = document.getElementById('editUserEmployeeId').value.trim();
+        const username = document.getElementById('editUserUsername').value.trim();
+        const password = document.getElementById('editUserPassword').value.trim();
+
+        if (!name || !email || !employeeId || !username || !password) {
+            alert('All fields are required!');
+            return;
+        }
+
+        // Check for duplicate username (excluding current user)
+        const duplicateUsername = this.participants.find(p => 
+            p.username && p.username.toLowerCase() === username.toLowerCase() && 
+            (p.id !== userId && p.employeeId !== userId)
+        );
+        if (duplicateUsername) {
+            alert('Username already exists! Please choose a different username.');
+            return;
+        }
+
+        // Check for duplicate email (excluding current user)
+        const duplicateEmail = this.participants.find(p => 
+            (p.email || p.emailId) && (p.email || p.emailId).toLowerCase() === email.toLowerCase() && 
+            (p.id !== userId && p.employeeId !== userId)
+        );
+        if (duplicateEmail) {
+            alert('Email already exists! Please use a different email.');
+            return;
+        }
+
+        // Update user
+        user.name = name;
+        user.email = email;
+        user.emailId = email;
+        user.id = employeeId;
+        user.employeeId = employeeId;
+        user.username = username;
+        user.password = password;
+
+        // Save to localStorage
+        const index = this.participants.findIndex(p => (p.id === userId) || (p.employeeId === userId));
+        if (index !== -1) {
+            this.participants[index] = user;
+            localStorage.setItem('participants', JSON.stringify(this.participants));
+            
+            // If this is the current user, update currentUser
+            if (this.currentUser && (this.currentUser.id === userId || this.currentUser.employeeId === userId)) {
+                this.currentUser = user;
+            }
+
+            alert('User details updated successfully!');
+            this.closeUserDetailsModal();
+            this.loadUsersList();
+        }
+    }
+
+    deleteUser(userId) {
+        if (!confirm('Are you sure you want to delete this user? This will also delete all their step entries. This action cannot be undone!')) {
+            return;
+        }
+
+        const user = this.participants.find(p => (p.id === userId) || (p.employeeId === userId));
+        if (!user) {
+            alert('User not found!');
+            return;
+        }
+
+        // Delete user from participants
+        this.participants = this.participants.filter(p => (p.id !== userId) && (p.employeeId !== userId));
+        localStorage.setItem('participants', JSON.stringify(this.participants));
+
+        // Delete all step entries for this user
+        this.stepEntries = this.loadStepEntries();
+        this.stepEntries = this.stepEntries.filter(entry => 
+            entry.userId !== userId && entry.userId !== user.id && entry.userId !== user.employeeId
+        );
+        localStorage.setItem('stepEntries', JSON.stringify(this.stepEntries));
+
+        alert('User and all their activities have been deleted!');
+        this.closeUserDetailsModal();
+        this.loadUsersList();
+        this.updateAdminDashboard();
+    }
+
+    deleteUserActivity(activityId, userId) {
+        if (!confirm('Are you sure you want to delete this activity entry?')) {
+            return;
+        }
+
+        this.stepEntries = this.loadStepEntries();
+        const activity = this.stepEntries.find(e => e.id === activityId);
+        
+        if (activity) {
+            // Remove steps from user's total
+            const user = this.participants.find(p => (p.id === userId) || (p.employeeId === userId));
+            if (user) {
+                const entryDate = new Date(activity.date).toDateString();
+                if (user.dailySteps && user.dailySteps[entryDate]) {
+                    user.dailySteps[entryDate] = Math.max(0, user.dailySteps[entryDate] - activity.steps);
+                    if (user.dailySteps[entryDate] === 0) {
+                        delete user.dailySteps[entryDate];
+                    }
+                }
+                user.totalSteps = Math.max(0, (user.totalSteps || 0) - activity.steps);
+                localStorage.setItem('participants', JSON.stringify(this.participants));
+            }
+
+            // Remove entry
+            this.stepEntries = this.stepEntries.filter(e => e.id !== activityId);
+            localStorage.setItem('stepEntries', JSON.stringify(this.stepEntries));
+        }
+
+        alert('Activity deleted successfully!');
+        this.viewUserDetails(userId); // Refresh the modal
+        this.updateAdminDashboard();
+    }
+
+    closeUserDetailsModal() {
+        const modal = document.getElementById('userDetailsModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // Help Modal Functions
+    showHelpModal() {
+        const modal = document.getElementById('helpModal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+    }
+
+    closeHelpModal() {
+        const modal = document.getElementById('helpModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    openEmailClient() {
+        const subject = encodeURIComponent('Stepathon Challenge Support');
+        const body = encodeURIComponent('Hello,\n\nI need help with:\n\n');
+        window.location.href = `mailto:wow-csg@csgi.com?subject=${subject}&body=${body}`;
     }
 
     renderValidationList(filter = 'pending') {
@@ -2768,7 +3215,7 @@ Please keep this information secure.`;
     }
 
     calculateStreak(participant) {
-        if (!participant.dailySteps || Object.keys(participant.dailySteps).length === 0) {
+        if (!participant || !participant.dailySteps || Object.keys(participant.dailySteps).length === 0) {
             return 0;
         }
         
@@ -2780,39 +3227,63 @@ Please keep this information secure.`;
         // Create a map of date strings to steps for easy lookup
         const stepsByDate = {};
         Object.keys(participant.dailySteps).forEach(dateStr => {
-            // Ensure we're using the correct date string format
-            const date = new Date(dateStr);
-            date.setHours(0, 0, 0, 0);
-            const normalizedDateStr = date.toDateString();
-            stepsByDate[normalizedDateStr] = participant.dailySteps[dateStr];
+            try {
+                // Parse the date string - handle both Date objects and strings
+                let date;
+                if (dateStr instanceof Date) {
+                    date = new Date(dateStr);
+                } else {
+                    date = new Date(dateStr);
+                }
+                
+                // Check if date is valid
+                if (isNaN(date.getTime())) {
+                    console.warn('Invalid date string in dailySteps:', dateStr);
+                    return;
+                }
+                
+                date.setHours(0, 0, 0, 0);
+                const normalizedDateStr = date.toDateString();
+                // Sum steps if multiple entries exist for same date
+                if (stepsByDate[normalizedDateStr]) {
+                    stepsByDate[normalizedDateStr] += participant.dailySteps[dateStr];
+                } else {
+                    stepsByDate[normalizedDateStr] = participant.dailySteps[dateStr];
+                }
+            } catch (e) {
+                console.warn('Error parsing date in calculateStreak:', dateStr, e);
+            }
         });
         
         let streak = 0;
         let checkDate = new Date(today);
-        const dailyGoal = 10000;
+        const minStepsForStreak = 1; // Count any day with activity (steps > 0) as a streak day
+        const maxDaysToCheck = 365; // Prevent infinite loops
+        let daysChecked = 0;
         
-        // Check consecutive days starting from today (or yesterday if today hasn't been completed)
-        // First, check if today has steps >= goal
-        if (stepsByDate[todayStr] && stepsByDate[todayStr] >= dailyGoal) {
+        // Check consecutive days starting from today (or yesterday if today has no activity)
+        // First, check if today has any steps
+        if (stepsByDate[todayStr] && stepsByDate[todayStr] >= minStepsForStreak) {
             // Start counting from today
             checkDate = new Date(today);
         } else {
-            // If today doesn't have enough steps, start from yesterday
+            // If today has no steps, start from yesterday
             checkDate.setDate(checkDate.getDate() - 1);
         }
         
         // Count consecutive days backwards
-        while (true) {
+        while (daysChecked < maxDaysToCheck) {
             const checkDateStr = checkDate.toDateString();
             const steps = stepsByDate[checkDateStr];
             
-            // If this date has steps >= goal, increment streak
-            if (steps && steps >= dailyGoal) {
+            // If this date has any steps (activity), increment streak
+            if (steps && steps >= minStepsForStreak) {
                 streak++;
                 // Move to previous day
                 checkDate.setDate(checkDate.getDate() - 1);
+                daysChecked++;
             } else {
-                // No more consecutive days
+                // No more consecutive days with activity
                 break;
             }
         }
@@ -2982,6 +3453,7 @@ Please keep this information secure.`;
         this.stepCounter.startTime = Date.now();
         this.stepCounter.lastAcceleration = { x: 0, y: 0, z: 0 };
         this.stepCounter.stepHistory = [];
+        this.stepCounter.accelerationHistory = [];
 
         // Check if device supports motion events
         if (typeof DeviceMotionEvent === 'undefined') {
@@ -3006,7 +3478,11 @@ Please keep this information secure.`;
         
         if (startBtn) startBtn.style.display = 'none';
         if (stopBtn) stopBtn.style.display = 'inline-block';
-        if (useBtn) useBtn.style.display = 'none';
+        if (useBtn) {
+            useBtn.style.display = 'none';
+            useBtn.disabled = true;
+            useBtn.style.setProperty('display', 'none', 'important');
+        }
         if (saveBtn) saveBtn.style.display = 'none';
         if (timerEl) timerEl.style.display = 'flex';
         if (pulseEl) pulseEl.classList.add('active');
@@ -3042,16 +3518,51 @@ Please keep this information secure.`;
         
         const magnitude = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
 
-        // Detect step (threshold-based algorithm)
-        if (magnitude > this.stepCounter.threshold) {
+        // Store acceleration history for pattern recognition
+        this.stepCounter.accelerationHistory.push({
+            magnitude: magnitude,
+            deltaZ: deltaZ,
+            timestamp: Date.now()
+        });
+        
+        // Keep only last 20 readings (about 1 second at ~20Hz)
+        if (this.stepCounter.accelerationHistory.length > 20) {
+            this.stepCounter.accelerationHistory.shift();
+        }
+
+        // Improved step detection with multiple criteria:
+        // 1. Overall magnitude must exceed threshold
+        // 2. Vertical (Z-axis) movement must be significant (walking involves vertical motion)
+        // 3. Must have rhythmic pattern (check recent history) - but allow first few steps
+        const hasSignificantMagnitude = magnitude > this.stepCounter.threshold;
+        const hasVerticalMovement = deltaZ > this.stepCounter.minVerticalChange;
+        
+        // Check for rhythmic pattern (walking has consistent pattern)
+        // Allow first 2 steps without pattern check, then require pattern
+        let hasRhythmicPattern = true; // Default to true for first steps
+        if (this.stepCounter.stepCount >= 2 && this.stepCounter.accelerationHistory.length >= 5) {
+            const recent = this.stepCounter.accelerationHistory.slice(-5);
+            const highMagnitudeCount = recent.filter(r => r.magnitude > this.stepCounter.threshold).length;
+            // At least 2 high magnitude readings in recent history suggests walking pattern
+            hasRhythmicPattern = highMagnitudeCount >= 2;
+        }
+
+        // Detect step only if all criteria are met
+        // For first 2 steps, only require magnitude and vertical movement
+        // After that, also require rhythmic pattern
+        const canDetectStep = hasSignificantMagnitude && hasVerticalMovement && 
+            (this.stepCounter.stepCount < 2 || hasRhythmicPattern);
+        
+        if (canDetectStep) {
             // Check if enough time has passed since last step (prevent double counting)
             const now = Date.now();
             const timeSinceLastStep = this.stepCounter.stepHistory.length > 0 
                 ? now - this.stepCounter.stepHistory[this.stepCounter.stepHistory.length - 1]
                 : 1000;
 
-            // Minimum 300ms between steps (prevents false positives)
-            if (timeSinceLastStep > 300) {
+            // Minimum 400ms between steps (prevents false positives from hand movements)
+            // Average walking pace is about 2 steps per second (500ms per step)
+            if (timeSinceLastStep > 400) {
                 this.stepCounter.stepCount++;
                 this.stepCounter.stepHistory.push(now);
                 
@@ -3093,7 +3604,11 @@ Please keep this information secure.`;
         if (valueEl) valueEl.classList.remove('active');
         
         if (this.stepCounter.stepCount > 0) {
-            if (useBtn) useBtn.style.display = 'block';
+            if (useBtn) {
+                useBtn.style.display = 'none'; // Disabled - users cannot use step counter steps in manual entry
+                useBtn.disabled = true;
+                useBtn.style.setProperty('display', 'none', 'important');
+            }
             if (saveBtn) saveBtn.style.display = 'block';
         }
 
@@ -3103,7 +3618,7 @@ Please keep this information secure.`;
         const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
         
         this.updateCounterStatus(`Stopped. Counted ${this.stepCounter.stepCount.toLocaleString()} steps in ${timeStr}.`);
-        this.updateCounterHint('You can save these steps or continue counting');
+        this.updateCounterHint('You can save these steps directly or continue counting');
         
         this.showCounterNotification(`Step counting stopped. Total: ${this.stepCounter.stepCount.toLocaleString()} steps`);
     }
@@ -3111,6 +3626,7 @@ Please keep this information secure.`;
     resetStepCounter() {
         this.stepCounter.stepCount = 0;
         this.stepCounter.stepHistory = [];
+        this.stepCounter.accelerationHistory = [];
         this.stepCounter.startTime = null;
         this.updateStepCounterDisplay();
         this.updateCounterStatus('Counter reset. Ready to start.');
@@ -3188,17 +3704,22 @@ Please keep this information secure.`;
     }
 
     useCounterSteps() {
-        if (this.stepCounter.stepCount > 0) {
-            // Switch to manual entry tab and populate the input
-            this.switchInputMethod('manual');
-            const stepsInput = document.getElementById('stepsInput');
-            if (stepsInput) {
-                stepsInput.value = this.stepCounter.stepCount;
-            }
-            this.updateScreenshotRequirement();
-            this.showCounterNotification(`Added ${this.stepCounter.stepCount.toLocaleString()} steps to manual entry form! Screenshot is optional for step counter entries.`);
-            // Don't reset counter - user might want to save directly
-        }
+        // This function is disabled - users cannot use step counter steps in manual entry
+        // They must save steps directly using "Save Steps & Update Leaderboard" button
+        return;
+        
+        // Disabled code below:
+        // if (this.stepCounter.stepCount > 0) {
+        //     // Switch to manual entry tab and populate the input
+        //     this.switchInputMethod('manual');
+        //     const stepsInput = document.getElementById('stepsInput');
+        //     if (stepsInput) {
+        //         stepsInput.value = this.stepCounter.stepCount;
+        //     }
+        //     this.updateScreenshotRequirement();
+        //     this.showCounterNotification(`Added ${this.stepCounter.stepCount.toLocaleString()} steps to manual entry form! Screenshot is optional for step counter entries.`);
+        //     // Don't reset counter - user might want to save directly
+        // }
     }
 
     updateScreenshotRequirement() {
