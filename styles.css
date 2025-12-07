@@ -3911,10 +3911,19 @@ footer {
         letter-spacing: -0.2px;
     }
 
-    .dashboard-header .btn {
+    .dashboard-header-actions {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
         width: 100%;
+        flex-wrap: nowrap;
+    }
+
+    .dashboard-header .btn {
+        flex: 1;
         margin-bottom: 0;
         min-height: 56px;
+        width: auto;
     }
 
     /* Leaderboard - Enhanced mobile design */
