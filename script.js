@@ -1022,13 +1022,13 @@ class StepathonApp {
     }
 
     updateDates() {
-        // Set start date to December 15, 2025
-        const startDate = new Date(2025, 11, 15); // Month is 0-indexed, so 11 = December
+        // Set start date to February 1, 2026
+        const startDate = new Date(2026, 1, 1); // Month is 0-indexed, so 1 = February
         startDate.setHours(0, 0, 0, 0); // Normalize time
         
-        // Set end date to 7 days later (December 22, 2025)
+        // Set end date to 14 days later (February 15, 2026)
         const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + 7);
+        endDate.setDate(endDate.getDate() + 14);
         endDate.setHours(0, 0, 0, 0); // Normalize time
 
         const startDateElement = document.getElementById('startDate');
@@ -1402,7 +1402,7 @@ class StepathonApp {
         const subject = encodeURIComponent('Welcome to WoW-CSG Stepathon Challenge - Your Account Details');
         const body = encodeURIComponent(`Dear Participant,
 
-Welcome to the WoW-CSG Stepathon Challenge 2025!
+Welcome to the WoW-CSG Stepathon Challenge 2026!
 
 Your account has been created successfully.
 
@@ -1422,7 +1422,7 @@ WoW-CSG Stepathon Team`);
             subject: 'Welcome to WoW-CSG Stepathon Challenge - Your Account Details',
             body: `Dear Participant,
 
-Welcome to the WoW-CSG Stepathon Challenge 2025!
+Welcome to the WoW-CSG Stepathon Challenge 2026!
 
 Your account has been created successfully.
 
@@ -1479,7 +1479,7 @@ WoW-CSG Stepathon Team`,
                 subject: 'Welcome to WoW-CSG Stepathon Challenge - Your Account Details',
                 message: `Dear Participant,
 
-Welcome to the WoW-CSG Stepathon Challenge 2025!
+Welcome to the WoW-CSG Stepathon Challenge 2026!
 
 Your account has been created successfully.
 
@@ -2628,8 +2628,11 @@ Please keep this information secure.`;
                     </div>
                     <div class="form-group">
                         <label>Password <span class="required">*</span></label>
-                        <input type="text" id="editUserPassword" value="${user.password || ''}" required>
-                        <small class="form-hint">Current password is visible. Change it to update.</small>
+                        <input type="password" id="editUserPassword" placeholder="Enter new password (leave blank to keep current)" autocomplete="new-password">
+                        <small class="form-hint">Password is stored as a hash. Enter a new password to change it, or leave blank to keep the current password.</small>
+                        <div style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; font-size: 0.85rem; color: #666;">
+                            <strong>Current Password Hash:</strong> <code style="font-size: 0.8rem; word-break: break-all;">${user.password || 'Not set'}</code>
+                        </div>
                     </div>
                 </div>
 
@@ -2697,8 +2700,8 @@ Please keep this information secure.`;
         const username = document.getElementById('editUserUsername').value.trim();
         const password = document.getElementById('editUserPassword').value.trim();
 
-        if (!name || !email || !employeeId || !username || !password) {
-            alert('All fields are required!');
+        if (!name || !email || !employeeId || !username) {
+            alert('Name, Email, Employee ID, and Username are required!');
             return;
         }
 
@@ -2729,7 +2732,20 @@ Please keep this information secure.`;
         user.id = employeeId;
         user.employeeId = employeeId;
         user.username = username;
-        user.password = password;
+        
+        // Only update password if a new one was provided
+        if (password && password.length > 0) {
+            // Check if the password is already hashed (hashes are typically numeric strings)
+            // If it looks like a hash (all digits), don't hash again. Otherwise, hash it.
+            if (/^\d+$/.test(password) && password.length > 10) {
+                // Likely already a hash, use as is
+                user.password = password;
+            } else {
+                // New password, hash it
+                user.password = this.hashPassword(password);
+            }
+        }
+        // If password is empty, keep the existing password (don't update)
 
         // Save to localStorage
         const index = this.participants.findIndex(p => 

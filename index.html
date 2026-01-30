@@ -6,15 +6,23 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>WoW-CSG Stepathon Challenge 2025</title>
+    <meta name="theme-color" content="#003366">
+    <meta name="description" content="WoW-CSG Stepathon Challenge 2026 - Step Your Way to Victory!">
+    <title>WoW-CSG Stepathon Challenge 2026</title>
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="apple-touch-icon" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Microsoft Teams SDK (optional, only loads if in Teams) -->
+    <script src="https://statics.teams.cdn.office.net/sdk/v1.11.0/js/MicrosoftTeams.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
     <!-- EmailJS SDK -->
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <!-- Teams Integration (optional) -->
+    <script src="teams-integration.js"></script>
 </head>
 <body>
     <div class="container">
@@ -30,7 +38,7 @@
                 <div class="csg-logo">
                     <img src="CSG_Logo_K_outline.jpg" alt="CSG Logo" class="csg-logo-img">
                 </div>
-                <h1 class="animated-title">WoW-CSG Stepathon Challenge 2025</h1>
+                <h1 class="animated-title">WoW-CSG Stepathon Challenge 2026</h1>
             </div>
             <p class="subtitle">Step Your Way to Victory! 🏆</p>
         </header>
@@ -53,7 +61,7 @@
                             <div class="icon-ripple"></div>
                         </div>
                         <span class="label">Duration:</span>
-                        <span class="value">1 Week</span>
+                        <span class="value">2 Weeks</span>
                         <div class="info-item-shine"></div>
                     </div>
                     <div class="info-item pulse-animation info-item-2" style="animation-delay: 0.1s;" tabindex="-1">
@@ -63,7 +71,7 @@
                             <div class="icon-ripple"></div>
                         </div>
                         <span class="label">Start Date:</span>
-                        <span class="value" id="startDate">Dec 15, 2025</span>
+                        <span class="value" id="startDate">Feb 1, 2026</span>
                         <div class="info-item-shine"></div>
                     </div>
                     <div class="info-item pulse-animation info-item-3" style="animation-delay: 0.2s;" tabindex="-1">
@@ -73,7 +81,7 @@
                             <div class="icon-ripple"></div>
                         </div>
                         <span class="label">End Date:</span>
-                        <span class="value" id="endDate">Dec 22, 2025</span>
+                        <span class="value" id="endDate">Feb 15, 2026</span>
                         <div class="info-item-shine"></div>
                     </div>
                     <div class="info-item pulse-animation info-item-4" style="animation-delay: 0.3s;" tabindex="-1">
@@ -498,7 +506,7 @@
         </div>
 
         <footer>
-            <p>© 2025 CSG International | WoW-CSG Stepathon Challenge | Let's get moving together! 💪</p>
+            <p>© 2026 CSG International | WoW-CSG Stepathon Challenge | Let's get moving together! 💪</p>
             <p class="footer-subtext">Powered by CSG - Connecting People, Enabling Possibilities</p>
             <p class="footer-help">
                 <a href="#" id="footerHelpLink" class="help-link">❓ Need Help? Contact us at wow-csg@csgi.com</a>
@@ -576,6 +584,63 @@
     </div>
 
     <script src="script.js"></script>
+    
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then((registration) => {
+                        console.log('Service Worker registered:', registration);
+                    })
+                    .catch((error) => {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
+    
+    <!-- Capacitor (for Android app) -->
+    <script type="module">
+        import { Capacitor } from '@capacitor/core';
+        import { App } from '@capacitor/app';
+        import { StatusBar, Style } from '@capacitor/status-bar';
+        import { SplashScreen } from '@capacitor/splash-screen';
+        import { Keyboard } from '@capacitor/keyboard';
+        
+        // Initialize Capacitor plugins when running as native app
+        if (Capacitor.isNativePlatform()) {
+            // Set status bar style
+            StatusBar.setStyle({ style: Style.Light });
+            StatusBar.setBackgroundColor({ color: '#003366' });
+            
+            // Hide splash screen after app is ready
+            SplashScreen.hide();
+            
+            // Handle app state changes
+            App.addListener('appStateChange', ({ isActive }) => {
+                console.log('App state changed. Is active?', isActive);
+            });
+            
+            // Handle back button (Android)
+            App.addListener('backButton', ({ canGoBack }) => {
+                if (!canGoBack) {
+                    App.exitApp();
+                } else {
+                    window.history.back();
+                }
+            });
+            
+            // Handle keyboard events
+            Keyboard.addListener('keyboardWillShow', info => {
+                console.log('keyboard will show with height:', info.keyboardHeight);
+            });
+            
+            Keyboard.addListener('keyboardWillHide', () => {
+                console.log('keyboard will hide');
+            });
+        }
+    </script>
 </body>
 </html>
 
