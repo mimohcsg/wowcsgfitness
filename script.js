@@ -1335,19 +1335,30 @@ class StepathonApp {
     }
 
     handleLogin() {
-        const username = document.getElementById('loginUsername').value.trim();
+        // Reload participants to avoid stale data across tabs or sessions
+        this.participants = this.loadParticipants();
+
+        const identifier = document.getElementById('loginUsername').value.trim();
         const password = document.getElementById('loginPassword').value;
 
-        if (!username || !password) {
-            alert('Please enter both username and password!');
+        if (!identifier || !password) {
+            alert('Please enter your username/email/Employee ID and password!');
             return;
         }
 
-        // Find participant by username
-        const participant = this.participants.find(p => p.username && p.username.toLowerCase() === username.toLowerCase());
+        const normalizedIdentifier = identifier.toLowerCase();
+
+        // Find participant by username, email, or employee ID
+        const participant = this.participants.find(p =>
+            (p.username && p.username.toLowerCase() === normalizedIdentifier) ||
+            (p.email && p.email.toLowerCase() === normalizedIdentifier) ||
+            (p.emailId && p.emailId.toLowerCase() === normalizedIdentifier) ||
+            (p.id && p.id.toLowerCase() === normalizedIdentifier) ||
+            (p.employeeId && p.employeeId.toLowerCase() === normalizedIdentifier)
+        );
         
         if (!participant) {
-            alert('Invalid username or password!');
+            alert('No account found for that username, email, or Employee ID.');
             document.getElementById('loginUsername').focus();
             return;
         }
