@@ -3,6 +3,11 @@ class StepathonApp {
     constructor() {
         this.currentUser = null;
         this.isAdmin = false;
+        this.firebaseEnabled = false;
+        this.auth = null;
+        this.db = null;
+        this.isMigratingUsers = false;
+        this.initFirebase();
         this.participants = this.loadParticipants();
         
         // Initialize stepEntries - ensure it's always an array
@@ -57,6 +62,136 @@ class StepathonApp {
                 }, 100);
             });
         }
+
+        // Keep participant cache fresh for admin/user lists
+        this.syncParticipantsFromFirebase();
+
+        if (window.location.pathname.includes('admin.html')) {
+            this.syncStepEntriesFromFirebase();
+        }
+    }
+
+    initFirebase() {
+        try {
+            if (typeof firebase === 'undefined') {
+                return;
+            }
+
+            if (!window.firebaseConfig || !window.firebaseConfig.apiKey) {
+                return;
+            }
+
+            if (!firebase.apps.length) {
+                firebase.initializeApp(window.firebaseConfig);
+            }
+
+            this.auth = firebase.auth();
+            this.db = firebase.firestore();
+            this.firebaseEnabled = true;
+
+            // Keep session in sync
+            this.auth.onAuthStateChanged((user) => {
+                if (this.isMigratingUsers) {
+                    return;
+                }
+                if (user) {
+                    this.loadCurrentUserFromFirebase(user.uid);
+                }
+            });
+        } catch (error) {
+            console.warn('Firebase initialization failed:', error);
+            this.firebaseEnabled = false;
+            this.auth = null;
+            this.db = null;
+        }
+    }
+
+    isEmail(value) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    }
+
+    getLegacyParticipantsForMigration() {
+        try {
+            const saved = localStorage.getItem('participants');
+            if (!saved) {
+                return [];
+            }
+            const parsed = JSON.parse(saved);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.warn('Failed to read legacy participants from localStorage:', error);
+            return [];
+        }
+    }
+
+    getLegacyStepEntriesForMigration() {
+        try {
+            const saved = localStorage.getItem('stepEntries');
+            if (!saved) {
+                return [];
+            }
+            const parsed = JSON.parse(saved);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.warn('Failed to read legacy stepEntries from localStorage:', error);
+            return [];
+        }
+    }
+
+    generateTempPassword() {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
+        let password = '';
+        for (let i = 0; i < 12; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
+    }
+
+    normalizeLocalParticipant(localUser, uid) {
+        const email = localUser.email || localUser.emailId || '';
+        const emailLower = email ? email.toLowerCase() : '';
+        const username = localUser.username || (email ? email.split('@')[0] : '');
+        const usernameLower = username ? username.toLowerCase() : '';
+        const employeeId = localUser.employeeId || localUser.id || '';
+        const employeeIdLower = employeeId ? employeeId.toLowerCase() : '';
+
+        return {
+            uid: uid,
+            id: employeeId,
+            employeeId: employeeId,
+            name: localUser.name || '',
+            email: email,
+            emailLower: emailLower,
+            username: username,
+            usernameLower: usernameLower,
+            employeeIdLower: employeeIdLower,
+            totalSteps: localUser.totalSteps || 0,
+            dailySteps: localUser.dailySteps || {},
+            streak: localUser.streak || 0,
+            lastActivity: localUser.lastActivity || null,
+            activities: Array.isArray(localUser.activities) ? localUser.activities : [],
+            registeredAt: localUser.registeredAt || new Date().toISOString()
+        };
+    }
+
+    normalizeStepEntry(entry, userUid = null) {
+        return {
+            id: entry.id,
+            userId: entry.userId || '',
+            userUid: userUid,
+            userName: entry.userName || entry.name || 'Unknown User',
+            userEmail: entry.userEmail || entry.email || 'No email',
+            steps: entry.steps || 0,
+            screenshot: entry.screenshot || null,
+            date: entry.date || new Date().toISOString(),
+            status: entry.status || 'pending',
+            validatedBy: entry.validatedBy || null,
+            validatedAt: entry.validatedAt || null,
+            lastModifiedBy: entry.lastModifiedBy || null,
+            lastModifiedAt: entry.lastModifiedAt || null,
+            notes: entry.notes || null,
+            source: entry.source || 'manual'
+        };
     }
 
     setupEventListeners() {
@@ -182,6 +317,14 @@ class StepathonApp {
         if (adminLogoutBtn) {
             adminLogoutBtn.addEventListener('click', () => {
                 this.adminLogout();
+            });
+        }
+
+        // Migrate local users to Firebase (admin only)
+        const migrateUsersBtn = document.getElementById('migrateUsersBtn');
+        if (migrateUsersBtn) {
+            migrateUsersBtn.addEventListener('click', () => {
+                this.migrateLocalUsersToFirebase();
             });
         }
 
@@ -1069,6 +1212,12 @@ class StepathonApp {
         if (savedAdmin === 'true') {
             this.isAdmin = true;
             this.showAdminDashboard();
+        } else if (this.firebaseEnabled && this.auth && this.auth.currentUser) {
+            this.loadCurrentUserFromFirebase(this.auth.currentUser.uid).then((participant) => {
+                if (participant) {
+                    this.showDashboard();
+                }
+            });
         } else if (savedUser) {
             this.currentUser = JSON.parse(savedUser);
             this.showDashboard();
@@ -1153,7 +1302,8 @@ class StepathonApp {
 
     loadStepEntries() {
         try {
-            const saved = localStorage.getItem('stepEntries');
+            const storageKey = this.firebaseEnabled ? 'stepEntries_cache' : 'stepEntries';
+            const saved = localStorage.getItem(storageKey);
             console.log('loadStepEntries - Raw localStorage value:', saved);
             
             if (!saved || saved === 'null' || saved === 'undefined') {
@@ -1187,12 +1337,13 @@ class StepathonApp {
                 this.stepEntries = [];
             }
             const jsonString = JSON.stringify(this.stepEntries);
-            localStorage.setItem('stepEntries', jsonString);
+            const storageKey = this.firebaseEnabled ? 'stepEntries_cache' : 'stepEntries';
+            localStorage.setItem(storageKey, jsonString);
             console.log('Saved stepEntries to localStorage:', this.stepEntries.length, 'entries');
             console.log('Saved data size:', jsonString.length, 'characters');
             
             // Verify save
-            const verify = localStorage.getItem('stepEntries');
+            const verify = localStorage.getItem(storageKey);
             if (verify !== jsonString) {
                 console.error('Save verification failed! Data mismatch.');
             } else {
@@ -1204,7 +1355,7 @@ class StepathonApp {
         }
     }
 
-    handleRegistration() {
+    async handleRegistration() {
         // Bot protection: Check honeypot field
         const honeypot = document.getElementById('website');
         if (honeypot && honeypot.value.trim() !== '') {
@@ -1273,6 +1424,79 @@ class StepathonApp {
             return;
         }
 
+        if (this.firebaseEnabled) {
+            const usernameLower = username.toLowerCase();
+            const employeeIdLower = id.toLowerCase();
+
+            // Check duplicates in Firebase
+            const usernameTaken = await this.isFirebaseFieldTaken('usernameLower', usernameLower);
+            if (usernameTaken) {
+                alert('Username already exists! Please choose a different username.');
+                document.getElementById('username').focus();
+                return;
+            }
+
+            const employeeIdTaken = await this.isFirebaseFieldTaken('employeeIdLower', employeeIdLower);
+            if (employeeIdTaken) {
+                alert('This Employee ID is already registered! Please login instead or contact support if you believe this is an error.');
+                document.getElementById('employeeId').focus();
+                this.switchLoginTab('user-login');
+                return;
+            }
+
+            try {
+                const credential = await this.auth.createUserWithEmailAndPassword(email, password);
+                const participant = {
+                    uid: credential.user.uid,
+                    id: id,
+                    employeeId: id,
+                    name: name,
+                    email: email,
+                    emailLower: email.toLowerCase(),
+                    username: username,
+                    usernameLower: usernameLower,
+                    employeeIdLower: employeeIdLower,
+                    totalSteps: 0,
+                    dailySteps: {},
+                    streak: 0,
+                    lastActivity: null,
+                    activities: [],
+                    registeredAt: new Date().toISOString()
+                };
+
+                await this.db.collection('participants').doc(credential.user.uid).set(participant);
+                this.participants.push(participant);
+                this.saveParticipantsCache();
+
+                this.currentUser = participant;
+                localStorage.setItem('currentUser', JSON.stringify(participant));
+
+                this.recordAttempt('registration', true);
+                this.generateCaptcha('registration');
+
+                alert(`Account created successfully!\n\nYou can now login with your email and password from any device.`);
+
+                document.getElementById('registrationForm').reset();
+                this.switchLoginTab('user-login');
+            } catch (error) {
+                if (error.code === 'auth/email-already-in-use') {
+                    alert('This email is already registered! Please login instead.');
+                    document.getElementById('emailId').focus();
+                    this.switchLoginTab('user-login');
+                } else if (error.code === 'auth/invalid-email') {
+                    alert('Please enter a valid email address!');
+                    document.getElementById('emailId').focus();
+                } else if (error.code === 'auth/weak-password') {
+                    alert('Password is too weak. Please use at least 6 characters.');
+                    document.getElementById('password').focus();
+                } else {
+                    console.error('Firebase registration error:', error);
+                    alert('Registration failed. Please try again.');
+                }
+            }
+            return;
+        }
+
         // Check if username already exists
         const existingUser = this.participants.find(p => p.username && p.username.toLowerCase() === username.toLowerCase());
         if (existingUser) {
@@ -1315,7 +1539,7 @@ class StepathonApp {
         };
 
         this.participants.push(participant);
-        localStorage.setItem('participants', JSON.stringify(this.participants));
+        this.saveParticipantsCache();
 
         // Record successful registration attempt
         this.recordAttempt('registration', true);
@@ -1334,7 +1558,7 @@ class StepathonApp {
         this.switchLoginTab('user-login');
     }
 
-    handleLogin() {
+    async handleLogin() {
         // Reload participants to avoid stale data across tabs or sessions
         this.participants = this.loadParticipants();
 
@@ -1343,6 +1567,11 @@ class StepathonApp {
 
         if (!identifier || !password) {
             alert('Please enter your username/email/Employee ID and password!');
+            return;
+        }
+
+        if (this.firebaseEnabled) {
+            await this.handleFirebaseLogin(identifier, password);
             return;
         }
 
@@ -1784,23 +2013,16 @@ Please keep this information secure.`;
         
         // Generate CAPTCHA for password reset
         const captcha = this.generateCaptchaValue();
-        
-        modal.innerHTML = `
-            <div class="email-modal">
-                <div class="email-modal-header">
-                    <h3>🔑 Reset Password</h3>
-                    <button class="email-modal-close" onclick="this.closest('.email-modal-overlay').remove()">×</button>
-                </div>
-                <div class="email-modal-content">
-                    <p class="email-info">Enter your username or email to reset your password.</p>
-                    <form id="resetPasswordForm" onsubmit="event.preventDefault(); app.resetPassword();">
-                        <!-- Honeypot field -->
-                        <input type="text" id="resetWebsite" name="website" style="display: none;" tabindex="-1" autocomplete="off">
-                        
-                        <div class="form-group">
-                            <label for="resetIdentifier">Username or Email <span class="required">*</span></label>
-                            <input type="text" id="resetIdentifier" placeholder="Enter username or email" required autocomplete="username">
-                        </div>
+        const useFirebaseReset = this.firebaseEnabled;
+        const formHandler = useFirebaseReset ? 'app.resetPasswordFirebase()' : 'app.resetPassword()';
+        const infoText = useFirebaseReset
+            ? 'Enter your username, email, or Employee ID. We will email you a reset link.'
+            : 'Enter your username or email to reset your password.';
+        const identifierLabel = useFirebaseReset ? 'Username / Email / Employee ID' : 'Username or Email';
+        const identifierPlaceholder = useFirebaseReset
+            ? 'Enter username, email, or Employee ID'
+            : 'Enter username or email';
+        const passwordFields = useFirebaseReset ? '' : `
                         <div class="form-group">
                             <label for="newPassword">New Password <span class="required">*</span></label>
                             <input type="password" id="newPassword" placeholder="Enter new password (min 6 characters)" required minlength="6" autocomplete="new-password">
@@ -1809,7 +2031,25 @@ Please keep this information secure.`;
                         <div class="form-group">
                             <label for="confirmNewPassword">Confirm New Password <span class="required">*</span></label>
                             <input type="password" id="confirmNewPassword" placeholder="Confirm new password" required minlength="6" autocomplete="new-password">
+                        </div>`;
+
+        modal.innerHTML = `
+            <div class="email-modal">
+                <div class="email-modal-header">
+                    <h3>🔑 Reset Password</h3>
+                    <button class="email-modal-close" onclick="this.closest('.email-modal-overlay').remove()">×</button>
+                </div>
+                <div class="email-modal-content">
+                    <p class="email-info">${infoText}</p>
+                    <form id="resetPasswordForm" onsubmit="event.preventDefault(); ${formHandler}">
+                        <!-- Honeypot field -->
+                        <input type="text" id="resetWebsite" name="website" style="display: none;" tabindex="-1" autocomplete="off">
+                        
+                        <div class="form-group">
+                            <label for="resetIdentifier">${identifierLabel} <span class="required">*</span></label>
+                            <input type="text" id="resetIdentifier" placeholder="${identifierPlaceholder}" required autocomplete="username">
                         </div>
+                        ${passwordFields}
                         <div class="form-group captcha-group">
                             <label for="resetCaptchaAnswer">Security Check <span class="required">*</span></label>
                             <div class="captcha-container">
@@ -1843,6 +2083,62 @@ Please keep this information secure.`;
         setTimeout(() => {
             document.getElementById('resetIdentifier').focus();
         }, 100);
+    }
+
+    async resetPasswordFirebase() {
+        // Bot protection: Check honeypot field
+        const honeypot = document.getElementById('resetWebsite');
+        if (honeypot && honeypot.value.trim() !== '') {
+            console.warn('Bot detected: Honeypot field was filled in password reset');
+            alert('Bot activity detected. Password reset blocked.');
+            return;
+        }
+
+        // Bot protection: Rate limiting check
+        if (!this.checkRateLimit('passwordReset')) {
+            this.recordAttempt('passwordReset', false); // Record failed attempt
+            alert('Too many password reset attempts. Please try again later.\n\nMaximum 5 attempts per hour and 10 attempts per day.');
+            return;
+        }
+
+        // Bot protection: Verify CAPTCHA
+        const modal = document.querySelector('.email-modal-overlay');
+        const captchaAnswer = modal ? parseInt(modal.dataset.captchaAnswer) : null;
+        const userAnswer = parseInt(document.getElementById('resetCaptchaAnswer').value);
+        
+        if (!captchaAnswer || userAnswer !== captchaAnswer) {
+            this.recordAttempt('passwordReset', false); // Record failed attempt
+            alert('Security check failed. Please solve the math problem correctly.');
+            this.refreshResetCaptcha();
+            return;
+        }
+
+        const identifier = document.getElementById('resetIdentifier').value.trim();
+        if (!identifier) {
+            alert('Please enter your username, email, or Employee ID!');
+            return;
+        }
+
+        let email = identifier;
+        if (!this.isEmail(identifier)) {
+            const participant = await this.lookupFirebaseParticipant(identifier);
+            if (!participant || !participant.email) {
+                alert('No account found for that username, email, or Employee ID.');
+                document.getElementById('resetIdentifier').focus();
+                return;
+            }
+            email = participant.email;
+        }
+
+        try {
+            await this.auth.sendPasswordResetEmail(email);
+            this.recordAttempt('passwordReset', true);
+            document.querySelector('.email-modal-overlay').remove();
+            this.showToast('Password reset email sent. Please check your inbox.');
+        } catch (error) {
+            console.error('Firebase password reset error:', error);
+            alert('Unable to send reset email. Please try again.');
+        }
     }
 
     resetPassword() {
@@ -1919,7 +2215,7 @@ Please keep this information secure.`;
         }
 
         // Save to localStorage
-        localStorage.setItem('participants', JSON.stringify(this.participants));
+        this.saveParticipantsCache();
 
         // If current user is logged in and matches, update their session
         if (this.currentUser && (
@@ -2212,6 +2508,7 @@ Please keep this information secure.`;
         const stepEntry = {
             id: entryId,
             userId: this.currentUser.id || this.currentUser.employeeId || 'unknown',
+            userUid: this.currentUser.uid || null,
             userName: this.currentUser.name || 'Unknown User',
             userEmail: this.currentUser.email || this.currentUser.emailId || 'No email',
             steps: steps,
@@ -2239,6 +2536,7 @@ Please keep this information secure.`;
         console.log('Total entries before save:', this.stepEntries.length);
         
         this.saveStepEntries();
+        this.upsertStepEntryInFirebase(stepEntry);
         
         // Verify save immediately
         const verify = this.loadStepEntries();
@@ -2249,7 +2547,8 @@ Please keep this information secure.`;
             console.error('ERROR: Entry was not saved to localStorage! Attempting manual save...');
             // Try manual save
             try {
-                localStorage.setItem('stepEntries', JSON.stringify([stepEntry]));
+                const storageKey = this.firebaseEnabled ? 'stepEntries_cache' : 'stepEntries';
+                localStorage.setItem(storageKey, JSON.stringify([stepEntry]));
                 console.log('Manual save attempted');
             } catch (e) {
                 console.error('Manual save also failed:', e);
@@ -2284,7 +2583,8 @@ Please keep this information secure.`;
         }
 
         localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-        localStorage.setItem('participants', JSON.stringify(this.participants));
+        this.saveParticipantsCache();
+        this.syncParticipantToFirebase(this.currentUser);
 
         document.getElementById('stepsInput').value = '';
         this.resetManualScreenshot();
@@ -2377,10 +2677,12 @@ Please keep this information secure.`;
         this.updateAdminDashboard();
     }
 
-    updateAdminDashboard() {
+    async updateAdminDashboard() {
         try {
             console.log('=== updateAdminDashboard called ===');
-            
+            if (this.firebaseEnabled) {
+                await this.syncStepEntriesFromFirebase();
+            }
             // Reload entries from localStorage to ensure we have the latest data
             this.stepEntries = this.loadStepEntries();
             
@@ -2388,7 +2690,8 @@ Please keep this information secure.`;
             console.log('Admin Dashboard - Entries:', JSON.stringify(this.stepEntries, null, 2));
             
             // Check localStorage directly
-            const rawData = localStorage.getItem('stepEntries');
+            const storageKey = this.firebaseEnabled ? 'stepEntries_cache' : 'stepEntries';
+            const rawData = localStorage.getItem(storageKey);
             console.log('Raw localStorage stepEntries:', rawData);
             console.log('localStorage stepEntries length:', rawData ? rawData.length : 0);
             
@@ -2767,7 +3070,7 @@ Please keep this information secure.`;
         );
         if (index !== -1) {
             this.participants[index] = user;
-            localStorage.setItem('participants', JSON.stringify(this.participants));
+            this.saveParticipantsCache();
             
             // If this is the current user, update currentUser
             if (this.currentUser && (this.currentUser.id === searchId || this.currentUser.employeeId === searchId)) {
@@ -2795,14 +3098,25 @@ Please keep this information secure.`;
 
         // Delete user from participants
         this.participants = this.participants.filter(p => (p.id !== userId) && (p.employeeId !== userId));
-        localStorage.setItem('participants', JSON.stringify(this.participants));
+        this.saveParticipantsCache();
+        if (this.firebaseEnabled && user.uid) {
+            this.db.collection('participants').doc(user.uid).delete().catch((error) => {
+                console.warn('Failed to delete participant from Firebase:', error);
+            });
+        }
 
         // Delete all step entries for this user
         this.stepEntries = this.loadStepEntries();
+        const removedEntries = this.stepEntries.filter(entry =>
+            entry.userId === userId || entry.userId === user.id || entry.userId === user.employeeId
+        );
         this.stepEntries = this.stepEntries.filter(entry => 
             entry.userId !== userId && entry.userId !== user.id && entry.userId !== user.employeeId
         );
-        localStorage.setItem('stepEntries', JSON.stringify(this.stepEntries));
+        this.saveStepEntries();
+        if (removedEntries.length > 0) {
+            removedEntries.forEach(entry => this.deleteStepEntryFromFirebase(entry.id));
+        }
 
         alert('User and all their activities have been deleted!');
         this.closeUserDetailsModal();
@@ -2830,12 +3144,14 @@ Please keep this information secure.`;
                     }
                 }
                 user.totalSteps = Math.max(0, (user.totalSteps || 0) - activity.steps);
-                localStorage.setItem('participants', JSON.stringify(this.participants));
+                this.saveParticipantsCache();
+                this.syncParticipantToFirebase(user);
             }
 
             // Remove entry
             this.stepEntries = this.stepEntries.filter(e => e.id !== activityId);
-            localStorage.setItem('stepEntries', JSON.stringify(this.stepEntries));
+            this.saveStepEntries();
+            this.deleteStepEntryFromFirebase(activityId);
         }
 
         alert('Activity deleted successfully!');
@@ -3116,7 +3432,7 @@ Please keep this information secure.`;
                     }
                 }
 
-                localStorage.setItem('participants', JSON.stringify(this.participants));
+                this.saveParticipantsCache();
             }
         } else if (status === 'rejected') {
             // If rejecting a previously approved entry, subtract the steps
@@ -3133,13 +3449,20 @@ Please keep this information secure.`;
                         activity.message = `Added ${currentSteps.toLocaleString()} steps (Rejected)`;
                     }
 
-                    localStorage.setItem('participants', JSON.stringify(this.participants));
+                    this.saveParticipantsCache();
                 }
             }
             // If rejecting a previously rejected entry, no change needed (steps were never added)
         }
 
         this.saveStepEntries();
+        this.upsertStepEntryInFirebase(entry);
+        if (this.firebaseEnabled) {
+            const participant = this.participants.find(p => p.id === entry.userId || p.employeeId === entry.userId);
+            if (participant) {
+                this.syncParticipantToFirebase(participant);
+            }
+        }
         this.updateAdminDashboard();
         this.updateLeaderboard();
         
@@ -3194,7 +3517,7 @@ Please keep this information secure.`;
                     activity.message = `Steps updated: ${previousSteps.toLocaleString()} → ${newSteps.toLocaleString()} (Pending re-approval)`;
                 }
 
-                localStorage.setItem('participants', JSON.stringify(this.participants));
+                this.saveParticipantsCache();
             }
             
             // Reset status to pending so admin can re-approve
@@ -3205,6 +3528,13 @@ Please keep this information secure.`;
         }
 
         this.saveStepEntries();
+        this.upsertStepEntryInFirebase(entry);
+        if (this.firebaseEnabled) {
+            const participant = this.participants.find(p => p.id === entry.userId || p.employeeId === entry.userId);
+            if (participant) {
+                this.syncParticipantToFirebase(participant);
+            }
+        }
         this.updateAdminDashboard();
         this.updateLeaderboard();
         
@@ -3439,6 +3769,11 @@ Please keep this information secure.`;
     }
 
     logout() {
+        if (this.firebaseEnabled && this.auth) {
+            this.auth.signOut().catch((error) => {
+                console.warn('Firebase sign out failed:', error);
+            });
+        }
         this.currentUser = null;
         localStorage.removeItem('currentUser');
         document.getElementById('loginCard').style.display = 'block';
@@ -3446,8 +3781,337 @@ Please keep this information secure.`;
         document.getElementById('loginForm').reset();
     }
 
+    async handleFirebaseLogin(identifier, password) {
+        try {
+            let email = identifier;
+            let participant = null;
+
+            if (!this.isEmail(identifier)) {
+                participant = await this.lookupFirebaseParticipant(identifier);
+                if (!participant || !participant.email) {
+                    alert('No account found for that username, email, or Employee ID.');
+                    document.getElementById('loginUsername').focus();
+                    return;
+                }
+                email = participant.email;
+            }
+
+            const credential = await this.auth.signInWithEmailAndPassword(email, password);
+            const profile = participant && participant.uid === credential.user.uid
+                ? participant
+                : await this.loadCurrentUserFromFirebase(credential.user.uid);
+
+            if (profile) {
+                this.currentUser = profile;
+                localStorage.setItem('currentUser', JSON.stringify(profile));
+            }
+
+            document.getElementById('loginForm').reset();
+            this.showDashboard();
+            this.updateLeaderboard();
+        } catch (error) {
+            if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                alert('Invalid username or password!');
+                document.getElementById('loginPassword').focus();
+            } else if (error.code === 'auth/user-not-found') {
+                alert('No account found for that username, email, or Employee ID.');
+                document.getElementById('loginUsername').focus();
+            } else {
+                console.error('Firebase login error:', error);
+                alert('Login failed. Please try again.');
+            }
+        }
+    }
+
+    async lookupFirebaseParticipant(identifier) {
+        if (!this.firebaseEnabled || !this.db) {
+            return null;
+        }
+
+        const normalizedIdentifier = identifier.toLowerCase();
+        const collection = this.db.collection('participants');
+
+        const usernameSnap = await collection.where('usernameLower', '==', normalizedIdentifier).limit(1).get();
+        if (!usernameSnap.empty) {
+            return usernameSnap.docs[0].data();
+        }
+
+        const employeeIdSnap = await collection.where('employeeIdLower', '==', normalizedIdentifier).limit(1).get();
+        if (!employeeIdSnap.empty) {
+            return employeeIdSnap.docs[0].data();
+        }
+
+        const emailSnap = await collection.where('emailLower', '==', normalizedIdentifier).limit(1).get();
+        if (!emailSnap.empty) {
+            return emailSnap.docs[0].data();
+        }
+
+        return null;
+    }
+
+    async isFirebaseFieldTaken(fieldName, value) {
+        if (!this.firebaseEnabled || !this.db) {
+            return false;
+        }
+        const snap = await this.db.collection('participants').where(fieldName, '==', value).limit(1).get();
+        return !snap.empty;
+    }
+
+    async loadCurrentUserFromFirebase(uid) {
+        if (!this.firebaseEnabled || !this.db) {
+            return null;
+        }
+        try {
+            const doc = await this.db.collection('participants').doc(uid).get();
+            if (!doc.exists) {
+                return null;
+            }
+            const participant = doc.data();
+            this.currentUser = participant;
+            localStorage.setItem('currentUser', JSON.stringify(participant));
+            return participant;
+        } catch (error) {
+            console.error('Failed to load user profile from Firebase:', error);
+            return null;
+        }
+    }
+
+    async syncParticipantsFromFirebase() {
+        if (!this.firebaseEnabled || !this.db) {
+            return;
+        }
+        try {
+            const snapshot = await this.db.collection('participants').get();
+            this.participants = snapshot.docs.map(doc => doc.data());
+            this.saveParticipantsCache();
+        } catch (error) {
+            console.warn('Failed to sync participants from Firebase:', error);
+        }
+    }
+
+    async syncStepEntriesFromFirebase() {
+        if (!this.firebaseEnabled || !this.db) {
+            return;
+        }
+        try {
+            const snapshot = await this.db.collection('stepEntries').get();
+            this.stepEntries = snapshot.docs.map(doc => doc.data());
+            this.saveStepEntries();
+        } catch (error) {
+            console.warn('Failed to sync step entries from Firebase:', error);
+        }
+    }
+
+    async upsertStepEntryInFirebase(entry) {
+        if (!this.firebaseEnabled || !this.db || !entry || !entry.id) {
+            return;
+        }
+        try {
+            await this.db.collection('stepEntries').doc(entry.id).set(entry, { merge: true });
+        } catch (error) {
+            console.warn('Failed to upsert step entry in Firebase:', error);
+        }
+    }
+
+    async deleteStepEntryFromFirebase(entryId) {
+        if (!this.firebaseEnabled || !this.db || !entryId) {
+            return;
+        }
+        try {
+            await this.db.collection('stepEntries').doc(entryId).delete();
+        } catch (error) {
+            console.warn('Failed to delete step entry from Firebase:', error);
+        }
+    }
+
+    async syncParticipantToFirebase(participant) {
+        if (!this.firebaseEnabled || !this.db || !participant || !participant.uid) {
+            return;
+        }
+        try {
+            await this.db.collection('participants').doc(participant.uid).set(participant, { merge: true });
+        } catch (error) {
+            console.warn('Failed to sync participant to Firebase:', error);
+        }
+    }
+
+    async migrateLocalUsersToFirebase() {
+        if (!this.firebaseEnabled || !this.auth || !this.db) {
+            alert('Firebase is not configured. Please update firebase-config.js first.');
+            return;
+        }
+
+        const localUsers = this.getLegacyParticipantsForMigration();
+        const localStepEntries = this.getLegacyStepEntriesForMigration();
+        if (!localUsers.length && !localStepEntries.length) {
+            alert('No local users or step entries found to migrate.');
+            return;
+        }
+
+        const confirmed = confirm(
+            `This will migrate ${localUsers.length} local users and ${localStepEntries.length} step entries to Firebase.\n\n` +
+            `New accounts will receive a password reset email.\n` +
+            `Continue?`
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        const results = {
+            processed: 0,
+            createdAuth: 0,
+            createdDocs: 0,
+            updatedDocs: 0,
+            skippedMissingEmail: 0,
+            skippedInvalidEmail: 0,
+            skippedExistingAuthNoDoc: 0,
+            stepEntriesMigrated: 0,
+            stepEntriesSkipped: 0,
+            failed: 0
+        };
+
+        this.isMigratingUsers = true;
+
+        try {
+            for (const localUser of localUsers) {
+                results.processed += 1;
+                const email = localUser.email || localUser.emailId || '';
+
+                if (!email) {
+                    results.skippedMissingEmail += 1;
+                    continue;
+                }
+
+                if (!this.isEmail(email)) {
+                    results.skippedInvalidEmail += 1;
+                    continue;
+                }
+
+                let uid = null;
+                let docRef = null;
+                let docExists = false;
+
+                const emailLower = email.toLowerCase();
+                const existingDocSnap = await this.db
+                    .collection('participants')
+                    .where('emailLower', '==', emailLower)
+                    .limit(1)
+                    .get();
+
+                if (!existingDocSnap.empty) {
+                    docRef = existingDocSnap.docs[0].ref;
+                    uid = existingDocSnap.docs[0].id;
+                    docExists = true;
+                }
+
+                let authExists = false;
+                try {
+                    const methods = await this.auth.fetchSignInMethodsForEmail(email);
+                    authExists = Array.isArray(methods) && methods.length > 0;
+                } catch (error) {
+                    console.warn('Failed to check auth for email:', email, error);
+                }
+
+                if (!uid && !authExists) {
+                    try {
+                        const tempPassword = this.generateTempPassword();
+                        const credential = await this.auth.createUserWithEmailAndPassword(email, tempPassword);
+                        uid = credential.user.uid;
+                        docRef = this.db.collection('participants').doc(uid);
+                        results.createdAuth += 1;
+
+                        try {
+                            await this.auth.sendPasswordResetEmail(email);
+                        } catch (error) {
+                            console.warn('Failed to send reset email for', email, error);
+                        }
+                    } catch (error) {
+                        console.error('Failed to create Firebase user for', email, error);
+                        results.failed += 1;
+                        continue;
+                    }
+                }
+
+                if (!uid && authExists) {
+                    results.skippedExistingAuthNoDoc += 1;
+                    continue;
+                }
+
+                const normalized = this.normalizeLocalParticipant(localUser, uid);
+                if (!docRef) {
+                    docRef = this.db.collection('participants').doc(uid);
+                }
+
+                await docRef.set(normalized, { merge: true });
+                if (docExists) {
+                    results.updatedDocs += 1;
+                } else {
+                    results.createdDocs += 1;
+                }
+            }
+
+            for (const entry of localStepEntries) {
+                if (!entry || !entry.id) {
+                    results.stepEntriesSkipped += 1;
+                    continue;
+                }
+
+                let userUid = null;
+                if (entry.userUid) {
+                    userUid = entry.userUid;
+                } else if (entry.userEmail && this.isEmail(entry.userEmail)) {
+                    const participant = await this.lookupFirebaseParticipant(entry.userEmail);
+                    if (participant && participant.uid) {
+                        userUid = participant.uid;
+                    }
+                } else if (entry.userId) {
+                    const participant = await this.lookupFirebaseParticipant(entry.userId);
+                    if (participant && participant.uid) {
+                        userUid = participant.uid;
+                    }
+                }
+
+                const normalizedEntry = this.normalizeStepEntry(entry, userUid);
+                await this.db.collection('stepEntries').doc(normalizedEntry.id).set(normalizedEntry, { merge: true });
+                results.stepEntriesMigrated += 1;
+            }
+        } finally {
+            this.isMigratingUsers = false;
+            try {
+                await this.auth.signOut();
+            } catch (error) {
+                console.warn('Firebase sign out failed after migration:', error);
+            }
+            this.currentUser = null;
+            localStorage.removeItem('currentUser');
+        }
+
+        await this.syncParticipantsFromFirebase();
+        await this.syncStepEntriesFromFirebase();
+
+        alert(
+            `Migration complete.\n\n` +
+            `Processed: ${results.processed}\n` +
+            `Auth created: ${results.createdAuth}\n` +
+            `Profiles created: ${results.createdDocs}\n` +
+            `Profiles updated: ${results.updatedDocs}\n` +
+            `Skipped (missing email): ${results.skippedMissingEmail}\n` +
+            `Skipped (invalid email): ${results.skippedInvalidEmail}\n` +
+            `Skipped (auth exists, no profile): ${results.skippedExistingAuthNoDoc}\n` +
+            `Step entries migrated: ${results.stepEntriesMigrated}\n` +
+            `Step entries skipped: ${results.stepEntriesSkipped}\n` +
+            `Failed: ${results.failed}`
+        );
+    }
+
+    saveParticipantsCache() {
+        const storageKey = this.firebaseEnabled ? 'participants_cache' : 'participants';
+        localStorage.setItem(storageKey, JSON.stringify(this.participants));
+    }
+
     loadParticipants() {
-        const saved = localStorage.getItem('participants');
+        const storageKey = this.firebaseEnabled ? 'participants_cache' : 'participants';
+        const saved = localStorage.getItem(storageKey);
         return saved ? JSON.parse(saved) : [];
     }
 
@@ -3830,6 +4494,7 @@ Please keep this information secure.`;
         const stepEntry = {
             id: entryId,
             userId: this.currentUser.id || this.currentUser.employeeId || 'unknown',
+            userUid: this.currentUser.uid || null,
             userName: this.currentUser.name || 'Unknown User',
             userEmail: this.currentUser.email || this.currentUser.emailId || 'No email',
             steps: steps,
@@ -3857,6 +4522,7 @@ Please keep this information secure.`;
         console.log('Total entries before save:', this.stepEntries.length);
         
         this.saveStepEntries();
+        this.upsertStepEntryInFirebase(stepEntry);
         
         // Verify save immediately
         const verify = this.loadStepEntries();
@@ -3867,7 +4533,8 @@ Please keep this information secure.`;
             console.error('ERROR: Entry was not saved to localStorage! Attempting manual save...');
             // Try manual save
             try {
-                localStorage.setItem('stepEntries', JSON.stringify([stepEntry]));
+                const storageKey = this.firebaseEnabled ? 'stepEntries_cache' : 'stepEntries';
+                localStorage.setItem(storageKey, JSON.stringify([stepEntry]));
                 console.log('Manual save attempted');
             } catch (e) {
                 console.error('Manual save also failed:', e);
@@ -3902,7 +4569,8 @@ Please keep this information secure.`;
         }
 
         localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-        localStorage.setItem('participants', JSON.stringify(this.participants));
+        this.saveParticipantsCache();
+        this.syncParticipantToFirebase(this.currentUser);
 
         // Reset step counter
         this.resetStepCounter();
@@ -4098,7 +4766,8 @@ window.debugStepathon = {
     // Check localStorage
     checkLocalStorage: function() {
         console.log('=== LocalStorage Debug ===');
-        const stepEntries = localStorage.getItem('stepEntries');
+        const stepEntriesKey = window.app && window.app.firebaseEnabled ? 'stepEntries_cache' : 'stepEntries';
+        const stepEntries = localStorage.getItem(stepEntriesKey);
         console.log('stepEntries key exists:', stepEntries !== null);
         console.log('stepEntries value:', stepEntries);
         console.log('stepEntries length:', stepEntries ? stepEntries.length : 0);
@@ -4118,7 +4787,8 @@ window.debugStepathon = {
             }
         }
         
-        const participants = localStorage.getItem('participants');
+        const participantsKey = window.app && window.app.firebaseEnabled ? 'participants_cache' : 'participants';
+        const participants = localStorage.getItem(participantsKey);
         console.log('participants key exists:', participants !== null);
         if (participants) {
             try {
@@ -4169,7 +4839,8 @@ window.debugStepathon = {
     // Clear all entries
     clearEntries: function() {
         if (confirm('Are you sure you want to clear all step entries?')) {
-            localStorage.removeItem('stepEntries');
+            const stepEntriesKey = window.app && window.app.firebaseEnabled ? 'stepEntries_cache' : 'stepEntries';
+            localStorage.removeItem(stepEntriesKey);
             if (window.app) {
                 window.app.stepEntries = [];
                 if (window.location.pathname.includes('admin.html')) {

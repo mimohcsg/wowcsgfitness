@@ -12,6 +12,15 @@
     <link rel="apple-touch-icon" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Microsoft Teams SDK (optional, only loads if in Teams) -->
+    <script src="https://statics.teams.cdn.office.net/sdk/v1.11.0/js/MicrosoftTeams.min.js" crossorigin="anonymous"></script>
+    <!-- Teams Integration (optional) -->
+    <script src="teams-integration.js"></script>
+    <!-- Firebase (optional - enables cross-device login) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
 </head>
 <body>
     <div class="container">
@@ -29,7 +38,7 @@
                 </div>
                 <h1 class="animated-title">Admin Dashboard</h1>
             </div>
-            <p class="subtitle">WoW-CSG Stepathon Challenge 2025</p>
+            <p class="subtitle">WoW-CSG Stepathon Challenge 2026</p>
         </header>
 
         <div class="main-content">
@@ -102,7 +111,10 @@
                 <div class="admin-tab-content" id="usersTab">
                     <div class="user-management-header">
                         <h3>👥 All Users</h3>
-                        <button class="btn btn-secondary" id="refreshUsersBtn">🔄 Refresh Users</button>
+                        <div class="user-management-actions">
+                            <button class="btn btn-secondary" id="refreshUsersBtn">🔄 Refresh Users</button>
+                            <button class="btn btn-secondary" id="migrateUsersBtn" title="Move local users into Firebase">☁️ Migrate Local Users</button>
+                        </div>
                     </div>
                     <div class="users-list" id="usersList">
                         <p class="no-entries">Loading users...</p>
@@ -169,7 +181,7 @@
         </div>
 
         <footer>
-            <p>© 2025 CSG International | WoW-CSG Stepathon Challenge | Admin Portal</p>
+            <p>© 2026 CSG International | WoW-CSG Stepathon Challenge | Admin Portal</p>
         </footer>
     </div>
 
