@@ -50,6 +50,7 @@ class StepathonApp {
 
     init() {
         this.setupEventListeners();
+        this.updateStorageNotice();
         // Only run these on main page, not admin page
         // Use requestAnimationFrame for better performance
         if (!window.location.pathname.includes('admin.html')) {
@@ -108,6 +109,18 @@ class StepathonApp {
 
     isEmail(value) {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    }
+
+    updateStorageNotice() {
+        const notice = document.getElementById('storageNotice');
+        if (!notice) {
+            return;
+        }
+        if (this.firebaseEnabled) {
+            notice.style.display = 'none';
+            return;
+        }
+        notice.style.display = 'block';
     }
 
     getLegacyParticipantsForMigration() {
@@ -1587,7 +1600,7 @@ class StepathonApp {
         );
         
         if (!participant) {
-            alert('No account found for that username, email, or Employee ID.');
+            alert('No account found for that username, email, or Employee ID.\n\nIf you registered in another browser or device, configure Firebase to enable cross-browser login.');
             document.getElementById('loginUsername').focus();
             return;
         }
