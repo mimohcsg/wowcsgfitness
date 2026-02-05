@@ -608,47 +608,6 @@
         }
     </script>
     
-    <!-- Capacitor (for Android app) -->
-    <script type="module">
-        import { Capacitor } from '@capacitor/core';
-        import { App } from '@capacitor/app';
-        import { StatusBar, Style } from '@capacitor/status-bar';
-        import { SplashScreen } from '@capacitor/splash-screen';
-        import { Keyboard } from '@capacitor/keyboard';
-        
-        // Initialize Capacitor plugins when running as native app
-        if (Capacitor.isNativePlatform()) {
-            // Set status bar style
-            StatusBar.setStyle({ style: Style.Light });
-            StatusBar.setBackgroundColor({ color: '#003366' });
-            
-            // Hide splash screen after app is ready
-            SplashScreen.hide();
-            
-            // Handle app state changes
-            App.addListener('appStateChange', ({ isActive }) => {
-                console.log('App state changed. Is active?', isActive);
-            });
-            
-            // Handle back button (Android)
-            App.addListener('backButton', ({ canGoBack }) => {
-                if (!canGoBack) {
-                    App.exitApp();
-                } else {
-                    window.history.back();
-                }
-            });
-            
-            // Handle keyboard events
-            Keyboard.addListener('keyboardWillShow', info => {
-                console.log('keyboard will show with height:', info.keyboardHeight);
-            });
-            
-            Keyboard.addListener('keyboardWillHide', () => {
-                console.log('keyboard will hide');
-            });
-        }
-    </script>
 </body>
 </html>
 

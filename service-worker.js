@@ -1,5 +1,5 @@
 // Service Worker for WoW-CSG Stepathon Challenge
-const CACHE_NAME = 'stepathon-v3';
+const CACHE_NAME = 'stepathon-v4';
 const urlsToCache = [
   './',
   './index.html',
@@ -46,6 +46,11 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
