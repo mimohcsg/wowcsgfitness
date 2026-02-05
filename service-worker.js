@@ -1,11 +1,12 @@
 // Service Worker for WoW-CSG Stepathon Challenge
-const CACHE_NAME = 'stepathon-v2';
+const CACHE_NAME = 'stepathon-v3';
 const urlsToCache = [
   './',
   './index.html',
   './admin.html',
   './styles.css',
   './script.js',
+  './manifest.json',
   './firebase-config.js',
   './favicon.svg',
   './CSG_Logo_K_outline.jpg'
