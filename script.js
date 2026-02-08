@@ -3609,7 +3609,55 @@ Please keep this information secure.`;
     }
 
     calculateStreak(participant) {
-        if (!participant || !participant.dailySteps || Object.keys(participant.dailySteps).length === 0) {
+        if (!participant) {
+            return 0;
+        }
+
+        // Prefer entry-based streak when step entries exist (counts per qualifying entry)
+        const entries = Array.isArray(this.stepEntries) ? this.stepEntries : this.loadStepEntries();
+        if (Array.isArray(entries) && entries.length > 0) {
+            const participantIds = new Set([
+                participant.uid ? String(participant.uid) : '',
+                participant.id ? String(participant.id) : '',
+                participant.employeeId ? String(participant.employeeId) : ''
+            ].filter(Boolean));
+
+            const qualifyingCountsByDate = {};
+            entries.forEach(entry => {
+                if (!entry) {
+                    return;
+                }
+                const entryUserUid = entry.userUid ? String(entry.userUid) : '';
+                const entryUserId = entry.userId ? String(entry.userId) : '';
+                const matchesUser = (entryUserUid && participantIds.has(entryUserUid)) ||
+                    (entryUserId && participantIds.has(entryUserId));
+
+                if (!matchesUser) {
+                    return;
+                }
+
+                const steps = typeof entry.steps === 'number' ? entry.steps : parseInt(entry.steps);
+                if (!steps || steps < 10000) {
+                    return;
+                }
+
+                const entryDate = new Date(entry.date || Date.now());
+                if (isNaN(entryDate.getTime())) {
+                    return;
+                }
+                entryDate.setHours(0, 0, 0, 0);
+                const dateKey = entryDate.toDateString();
+                qualifyingCountsByDate[dateKey] = (qualifyingCountsByDate[dateKey] || 0) + 1;
+            });
+
+            let streak = 0;
+            Object.values(qualifyingCountsByDate).forEach(count => {
+                streak += count;
+            });
+            return streak;
+        }
+
+        if (!participant.dailySteps || Object.keys(participant.dailySteps).length === 0) {
             return 0;
         }
         
@@ -3897,6 +3945,9 @@ Please keep this information secure.`;
             const snapshot = await this.db.collection('participants').get();
             this.participants = snapshot.docs.map(doc => doc.data());
             this.saveParticipantsCache();
+            if (!window.location.pathname.includes('admin.html')) {
+                this.updateLeaderboard();
+            }
         } catch (error) {
             console.warn('Failed to sync participants from Firebase:', error);
         }
