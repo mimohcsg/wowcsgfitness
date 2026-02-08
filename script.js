@@ -2716,12 +2716,16 @@ Please keep this information secure.`;
             const pending = this.stepEntries.filter(e => e && (e.status === 'pending' || !e.status)).length;
             const approved = this.stepEntries.filter(e => e && e.status === 'approved').length;
             const rejected = this.stepEntries.filter(e => e && e.status === 'rejected').length;
+            const totalSteps = (this.participants || []).reduce((sum, participant) => {
+                return sum + (participant.totalSteps || 0);
+            }, 0);
 
             console.log('Admin Dashboard - Stats:', { pending, approved, rejected, total: this.stepEntries.length });
 
             const pendingCountEl = document.getElementById('pendingCount');
             const approvedCountEl = document.getElementById('approvedCount');
             const rejectedCountEl = document.getElementById('rejectedCount');
+            const totalStepsCountEl = document.getElementById('totalStepsCount');
             
             if (!pendingCountEl) console.error('pendingCount element not found!');
             if (!approvedCountEl) console.error('approvedCount element not found!');
@@ -2730,6 +2734,7 @@ Please keep this information secure.`;
             if (pendingCountEl) pendingCountEl.textContent = pending;
             if (approvedCountEl) approvedCountEl.textContent = approved;
             if (rejectedCountEl) rejectedCountEl.textContent = rejected;
+            if (totalStepsCountEl) totalStepsCountEl.textContent = totalSteps.toLocaleString();
 
             // Get current filter or default to 'pending'
             const activeFilter = document.querySelector('.admin-filters .filter-btn.active');
@@ -2743,12 +2748,12 @@ Please keep this information secure.`;
         }
     }
 
-    filterAdminEntries(filter) {
+    async filterAdminEntries(filter) {
         document.querySelectorAll('.admin-filters .filter-btn').forEach(btn => {
             btn.classList.remove('active');
         });
         document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
-        this.renderValidationList(filter);
+        await this.renderValidationList(filter);
     }
 
     // User Management Functions
@@ -3200,7 +3205,7 @@ Please keep this information secure.`;
         window.location.href = `mailto:wow-csg@csgi.com?subject=${subject}&body=${body}`;
     }
 
-    renderValidationList(filter = 'pending') {
+    async renderValidationList(filter = 'pending') {
         try {
             const validationList = document.getElementById('validationList');
             if (!validationList) {
@@ -3208,8 +3213,14 @@ Please keep this information secure.`;
                 return;
             }
 
-            // Ensure entries are loaded (updateAdminDashboard should have loaded them, but reload to be safe)
-            this.stepEntries = this.loadStepEntries();
+            if (this.firebaseEnabled) {
+                if (!Array.isArray(this.stepEntries) || this.stepEntries.length === 0) {
+                    await this.syncStepEntriesFromFirebase();
+                }
+            } else {
+                // Ensure entries are loaded for local-only mode
+                this.stepEntries = this.loadStepEntries();
+            }
             
             console.log('=== renderValidationList ===');
             console.log('Filter:', filter);
