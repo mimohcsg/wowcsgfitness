@@ -2692,57 +2692,54 @@ Please keep this information secure.`;
 
     async updateAdminDashboard() {
         try {
-            // Use requestAnimationFrame to prevent blocking UI
-            requestAnimationFrame(async () => {
-                if (this.firebaseEnabled) {
-                    await this.syncStepEntriesFromFirebase();
-                }
-                // Reload entries from localStorage to ensure we have the latest data
-                this.stepEntries = this.loadStepEntries();
-                
-                if (!Array.isArray(this.stepEntries)) {
-                    console.error('stepEntries is not an array!', typeof this.stepEntries, this.stepEntries);
-                    this.stepEntries = [];
-                }
-                
-                // Optimize: Single pass through entries to count all stats
-                let pending = 0, approved = 0, rejected = 0;
-                for (let i = 0; i < this.stepEntries.length; i++) {
-                    const e = this.stepEntries[i];
-                    if (!e) continue;
-                    const status = e.status || 'pending';
-                    if (status === 'pending') pending++;
-                    else if (status === 'approved') approved++;
-                    else if (status === 'rejected') rejected++;
-                }
-                
-                // Cache total steps calculation - only recalculate if participants changed
-                if (!this._cachedTotalSteps || this._participantsVersion !== this.participants?.length) {
-                    this._cachedTotalSteps = (this.participants || []).reduce((sum, participant) => {
-                        return sum + (participant.totalSteps || 0);
-                    }, 0);
-                    this._participantsVersion = this.participants?.length || 0;
-                }
-                const totalSteps = this._cachedTotalSteps;
+            if (this.firebaseEnabled) {
+                await this.syncStepEntriesFromFirebase();
+            }
+            // Reload entries from localStorage to ensure we have the latest data
+            this.stepEntries = this.loadStepEntries();
+            
+            if (!Array.isArray(this.stepEntries)) {
+                console.error('stepEntries is not an array!', typeof this.stepEntries, this.stepEntries);
+                this.stepEntries = [];
+            }
+            
+            // Optimize: Single pass through entries to count all stats
+            let pending = 0, approved = 0, rejected = 0;
+            for (let i = 0; i < this.stepEntries.length; i++) {
+                const e = this.stepEntries[i];
+                if (!e) continue;
+                const status = e.status || 'pending';
+                if (status === 'pending') pending++;
+                else if (status === 'approved') approved++;
+                else if (status === 'rejected') rejected++;
+            }
+            
+            // Cache total steps calculation - only recalculate if participants changed
+            if (!this._cachedTotalSteps || this._participantsVersion !== (this.participants?.length || 0)) {
+                this._cachedTotalSteps = (this.participants || []).reduce((sum, participant) => {
+                    return sum + (participant.totalSteps || 0);
+                }, 0);
+                this._participantsVersion = this.participants?.length || 0;
+            }
+            const totalSteps = this._cachedTotalSteps;
 
-                // Update stats immediately
-                const pendingCountEl = document.getElementById('pendingCount');
-                const approvedCountEl = document.getElementById('approvedCount');
-                const rejectedCountEl = document.getElementById('rejectedCount');
-                const totalStepsCountEl = document.getElementById('totalStepsCount');
-                
-                if (pendingCountEl) pendingCountEl.textContent = pending;
-                if (approvedCountEl) approvedCountEl.textContent = approved;
-                if (rejectedCountEl) rejectedCountEl.textContent = rejected;
-                if (totalStepsCountEl) totalStepsCountEl.textContent = totalSteps.toLocaleString();
+            // Update stats immediately
+            const pendingCountEl = document.getElementById('pendingCount');
+            const approvedCountEl = document.getElementById('approvedCount');
+            const rejectedCountEl = document.getElementById('rejectedCount');
+            const totalStepsCountEl = document.getElementById('totalStepsCount');
+            
+            if (pendingCountEl) pendingCountEl.textContent = pending;
+            if (approvedCountEl) approvedCountEl.textContent = approved;
+            if (rejectedCountEl) rejectedCountEl.textContent = rejected;
+            if (totalStepsCountEl) totalStepsCountEl.textContent = totalSteps.toLocaleString();
 
-                // Get current filter or default to 'pending'
-                const activeFilter = document.querySelector('.admin-filters .filter-btn.active');
-                const filter = activeFilter ? (activeFilter.dataset.filter || 'pending') : 'pending';
-                
-                // Render validation list asynchronously to not block stats update
-                setTimeout(() => this.renderValidationList(filter), 0);
-            });
+            // Get current filter or default to 'pending'
+            const activeFilter = document.querySelector('.admin-filters .filter-btn.active');
+            const filter = activeFilter ? (activeFilter.dataset.filter || 'pending') : 'pending';
+            
+            // Render validation list asynchronously to not block stats update
+            setTimeout(() => this.renderValidationList(filter), 0);
         } catch (error) {
             console.error('Error in updateAdminDashboard:', error);
             alert('Error updating admin dashboard: ' + error.message);
@@ -3383,106 +3380,6 @@ Please keep this information secure.`;
             </div>
         `;
     }
-            const userName = entry.userName || entry.name || 'Unknown User';
-            const userEmail = entry.userEmail || entry.email || 'No email';
-            const userId = entry.userId || entry.id || 'unknown';
-            const steps = entry.steps || 0;
-            const entryDate = entry.date || new Date().toISOString();
-            const entryStatus = entry.status || 'pending';
-            
-            // Parse date safely
-            let date;
-            try {
-                date = new Date(entryDate);
-                if (isNaN(date.getTime())) {
-                    date = new Date();
-                }
-            } catch (e) {
-                date = new Date();
-            }
-            
-            const statusClass = entryStatus === 'approved' ? 'approved' : entryStatus === 'rejected' ? 'rejected' : 'pending';
-            const statusIcon = entryStatus === 'approved' ? '✅' : entryStatus === 'rejected' ? '❌' : '⏳';
-            
-            // Format date safely
-            let formattedDate;
-            try {
-                formattedDate = date.toLocaleString();
-            } catch (e) {
-                formattedDate = entryDate;
-            }
-            
-            // Format validated date safely
-            let validatedDateStr = '';
-            if (entry.validatedAt) {
-                try {
-                    const validatedDate = new Date(entry.validatedAt);
-                    if (!isNaN(validatedDate.getTime())) {
-                        validatedDateStr = validatedDate.toLocaleString();
-                    }
-                } catch (e) {
-                    validatedDateStr = entry.validatedAt;
-                }
-            }
-            
-            // Format modified date safely
-            let modifiedDateStr = '';
-            if (entry.lastModifiedAt) {
-                try {
-                    const modifiedDate = new Date(entry.lastModifiedAt);
-                    if (!isNaN(modifiedDate.getTime())) {
-                        modifiedDateStr = modifiedDate.toLocaleString();
-                    }
-                } catch (e) {
-                    modifiedDateStr = entry.lastModifiedAt;
-                }
-            }
-            
-            return `
-                <div class="validation-entry ${statusClass}">
-                    <div class="entry-header">
-                        <div class="entry-info">
-                            <h4>${this.escapeHtml(userName)} (${this.escapeHtml(userEmail)})</h4>
-                            <p class="entry-date">${formattedDate}</p>
-                            <p class="entry-id" style="font-size: 0.8rem; color: #666;">Entry ID: ${entry.id || 'N/A'}</p>
-                            <p class="entry-user-id" style="font-size: 0.8rem; color: #666;">User ID: ${userId}</p>
-                        </div>
-                        <div class="entry-status ${statusClass}">
-                            ${statusIcon} ${entryStatus.toUpperCase()}
-                        </div>
-                    </div>
-                    <div class="entry-details">
-                        <div class="entry-steps">
-                            <strong>Steps:</strong> ${steps.toLocaleString()}
-                        </div>
-                        <div class="entry-screenshot">
-                            <strong>Screenshot:</strong>
-                            ${entry.screenshot ? `
-                                <img src="${entry.screenshot}" alt="Step screenshot" class="validation-screenshot" onclick="this.classList.toggle('expanded')" style="cursor: pointer; max-width: 200px; border-radius: 8px; margin-top: 8px;">
-                            ` : `
-                                <p class="no-screenshot">No screenshot provided (Step counter entry or manual entry without screenshot)</p>
-                            `}
-                        </div>
-                        ${entry.source ? `<div class="entry-source" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Source:</strong> ${entry.source === 'step-counter' ? 'Step Counter' : 'Manual Entry'}</div>` : ''}
-                        ${entry.validatedBy ? `<div class="entry-validator" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Validated by:</strong> ${this.escapeHtml(entry.validatedBy)}${validatedDateStr ? ` on ${validatedDateStr}` : ''}</div>` : ''}
-                        ${entry.lastModifiedBy ? `<div class="entry-modifier" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Last modified by:</strong> ${this.escapeHtml(entry.lastModifiedBy)}${modifiedDateStr ? ` on ${modifiedDateStr}` : ''}</div>` : ''}
-                        ${entry.notes ? `<div class="entry-notes" style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; font-size: 0.9rem;"><strong>Notes:</strong> ${this.escapeHtml(entry.notes)}</div>` : ''}
-                    </div>
-                    <div class="entry-actions">
-                        ${entryStatus === 'pending' ? `
-                            <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Approve</button>
-                            <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject</button>
-                        ` : entryStatus === 'approved' ? `
-                            <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Re-approve</button>
-                            <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject</button>
-                        ` : entryStatus === 'rejected' ? `
-                            <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Approve</button>
-                            <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject Again</button>
-                        ` : ''}
-                        <button class="btn btn-edit" onclick="app.editEntrySteps('${entry.id}')">✏️ Edit Steps</button>
-                    </div>
-                </div>
-            `;
 
     escapeHtml(text) {
         if (!text) return '';
