@@ -2692,56 +2692,57 @@ Please keep this information secure.`;
 
     async updateAdminDashboard() {
         try {
-            console.log('=== updateAdminDashboard called ===');
-            if (this.firebaseEnabled) {
-                await this.syncStepEntriesFromFirebase();
-            }
-            // Reload entries from localStorage to ensure we have the latest data
-            this.stepEntries = this.loadStepEntries();
-            
-            console.log('Admin Dashboard - Total entries loaded:', this.stepEntries.length);
-            console.log('Admin Dashboard - Entries:', JSON.stringify(this.stepEntries, null, 2));
-            
-            // Check localStorage directly
-            const storageKey = this.firebaseEnabled ? 'stepEntries_cache' : 'stepEntries';
-            const rawData = localStorage.getItem(storageKey);
-            console.log('Raw localStorage stepEntries:', rawData);
-            console.log('localStorage stepEntries length:', rawData ? rawData.length : 0);
-            
-            if (!Array.isArray(this.stepEntries)) {
-                console.error('stepEntries is not an array!', typeof this.stepEntries, this.stepEntries);
-                this.stepEntries = [];
-            }
-            
-            const pending = this.stepEntries.filter(e => e && (e.status === 'pending' || !e.status)).length;
-            const approved = this.stepEntries.filter(e => e && e.status === 'approved').length;
-            const rejected = this.stepEntries.filter(e => e && e.status === 'rejected').length;
-            const totalSteps = (this.participants || []).reduce((sum, participant) => {
-                return sum + (participant.totalSteps || 0);
-            }, 0);
+            // Use requestAnimationFrame to prevent blocking UI
+            requestAnimationFrame(async () => {
+                if (this.firebaseEnabled) {
+                    await this.syncStepEntriesFromFirebase();
+                }
+                // Reload entries from localStorage to ensure we have the latest data
+                this.stepEntries = this.loadStepEntries();
+                
+                if (!Array.isArray(this.stepEntries)) {
+                    console.error('stepEntries is not an array!', typeof this.stepEntries, this.stepEntries);
+                    this.stepEntries = [];
+                }
+                
+                // Optimize: Single pass through entries to count all stats
+                let pending = 0, approved = 0, rejected = 0;
+                for (let i = 0; i < this.stepEntries.length; i++) {
+                    const e = this.stepEntries[i];
+                    if (!e) continue;
+                    const status = e.status || 'pending';
+                    if (status === 'pending') pending++;
+                    else if (status === 'approved') approved++;
+                    else if (status === 'rejected') rejected++;
+                }
+                
+                // Cache total steps calculation - only recalculate if participants changed
+                if (!this._cachedTotalSteps || this._participantsVersion !== this.participants?.length) {
+                    this._cachedTotalSteps = (this.participants || []).reduce((sum, participant) => {
+                        return sum + (participant.totalSteps || 0);
+                    }, 0);
+                    this._participantsVersion = this.participants?.length || 0;
+                }
+                const totalSteps = this._cachedTotalSteps;
 
-            console.log('Admin Dashboard - Stats:', { pending, approved, rejected, total: this.stepEntries.length });
+                // Update stats immediately
+                const pendingCountEl = document.getElementById('pendingCount');
+                const approvedCountEl = document.getElementById('approvedCount');
+                const rejectedCountEl = document.getElementById('rejectedCount');
+                const totalStepsCountEl = document.getElementById('totalStepsCount');
+                
+                if (pendingCountEl) pendingCountEl.textContent = pending;
+                if (approvedCountEl) approvedCountEl.textContent = approved;
+                if (rejectedCountEl) rejectedCountEl.textContent = rejected;
+                if (totalStepsCountEl) totalStepsCountEl.textContent = totalSteps.toLocaleString();
 
-            const pendingCountEl = document.getElementById('pendingCount');
-            const approvedCountEl = document.getElementById('approvedCount');
-            const rejectedCountEl = document.getElementById('rejectedCount');
-            const totalStepsCountEl = document.getElementById('totalStepsCount');
-            
-            if (!pendingCountEl) console.error('pendingCount element not found!');
-            if (!approvedCountEl) console.error('approvedCount element not found!');
-            if (!rejectedCountEl) console.error('rejectedCount element not found!');
-            
-            if (pendingCountEl) pendingCountEl.textContent = pending;
-            if (approvedCountEl) approvedCountEl.textContent = approved;
-            if (rejectedCountEl) rejectedCountEl.textContent = rejected;
-            if (totalStepsCountEl) totalStepsCountEl.textContent = totalSteps.toLocaleString();
-
-            // Get current filter or default to 'pending'
-            const activeFilter = document.querySelector('.admin-filters .filter-btn.active');
-            const filter = activeFilter ? (activeFilter.dataset.filter || 'pending') : 'pending';
-            
-            console.log('Rendering validation list with filter:', filter);
-            this.renderValidationList(filter);
+                // Get current filter or default to 'pending'
+                const activeFilter = document.querySelector('.admin-filters .filter-btn.active');
+                const filter = activeFilter ? (activeFilter.dataset.filter || 'pending') : 'pending';
+                
+                // Render validation list asynchronously to not block stats update
+                setTimeout(() => this.renderValidationList(filter), 0);
+            });
         } catch (error) {
             console.error('Error in updateAdminDashboard:', error);
             alert('Error updating admin dashboard: ' + error.message);
@@ -3222,67 +3223,166 @@ Please keep this information secure.`;
                 this.stepEntries = this.loadStepEntries();
             }
             
-            console.log('=== renderValidationList ===');
-            console.log('Filter:', filter);
-            console.log('Total entries:', this.stepEntries.length);
-            console.log('Entries:', this.stepEntries);
-        
-            let entries = [...this.stepEntries];
-            
-            console.log('Entries before filter:', entries.length);
-            if (entries.length > 0) {
-                console.log('Entry statuses:', entries.map(e => ({ 
-                    id: e ? e.id : 'null', 
-                    status: e ? (e.status || 'pending') : 'null',
-                    userName: e ? (e.userName || e.name || 'unknown') : 'null'
-                })));
-            }
+            // Show loading state
+            validationList.innerHTML = '<p class="no-entries">Loading entries...</p>';
 
-            if (filter !== 'all') {
-                entries = entries.filter(e => {
-                    if (!e) {
-                        console.warn('Found null/undefined entry in array');
-                        return false;
+            // Use requestAnimationFrame to prevent blocking UI
+            requestAnimationFrame(() => {
+                // Optimize: Single pass filtering (no array copy needed)
+                let entries = [];
+                const filterLower = filter.toLowerCase();
+                
+                for (let i = 0; i < this.stepEntries.length; i++) {
+                    const e = this.stepEntries[i];
+                    if (!e) continue;
+                    if (filter === 'all' || (e.status || 'pending').toLowerCase() === filterLower) {
+                        entries.push(e);
                     }
-                    const entryStatus = (e.status || 'pending').toLowerCase();
-                    const filterStatus = filter.toLowerCase();
-                    const matches = entryStatus === filterStatus;
-                    if (!matches) {
-                        console.log(`Entry ${e.id} status "${entryStatus}" does not match filter "${filterStatus}"`);
-                    }
-                    return matches;
-                });
-            }
-            
-            console.log('Entries after filter:', entries.length);
+                }
 
-            // Sort entries by date (newest first)
-            entries.sort((a, b) => {
-                try {
-                    const dateA = new Date(a.date || 0);
-                    const dateB = new Date(b.date || 0);
+                // Optimized sorting - use getTime() for faster comparison
+                entries.sort((a, b) => {
+                    const dateA = a.date ? new Date(a.date).getTime() : 0;
+                    const dateB = b.date ? new Date(b.date).getTime() : 0;
                     return dateB - dateA;
-                } catch (e) {
-                    console.error('Error sorting entries:', e);
-                    return 0;
+                });
+
+                if (entries.length === 0) {
+                    const filterText = filter === 'all' ? '' : ` for "${filter}" status`;
+                    validationList.innerHTML = `<p class="no-entries">No entries found${filterText}. Total entries in system: ${this.stepEntries.length}</p>`;
+                    return;
                 }
+
+                // Limit initial render for performance (show first 100 entries)
+                const maxEntries = 100;
+                const entriesToRender = entries.slice(0, maxEntries);
+                
+                // Batch create HTML string (faster than individual DOM operations)
+                const htmlParts = [];
+                for (let i = 0; i < entriesToRender.length; i++) {
+                    htmlParts.push(this.createEntryHTML(entriesToRender[i]));
+                }
+                
+                let html = htmlParts.join('');
+                
+                // Add pagination info if there are more entries
+                if (entries.length > maxEntries) {
+                    html += `<p class="pagination-info" style="text-align: center; padding: 15px; color: #666; font-size: 0.9rem;">Showing ${maxEntries} of ${entries.length} entries. Use filters to narrow results.</p>`;
+                }
+                
+                validationList.innerHTML = html;
             });
-
-            if (entries.length === 0) {
-                const filterText = filter === 'all' ? '' : ` for "${filter}" status`;
-                validationList.innerHTML = `<p class="no-entries">No entries found${filterText}. Total entries in system: ${this.stepEntries.length}</p>`;
-                console.log('No entries found for filter:', filter);
-                console.log('All entry statuses:', this.stepEntries.map(e => e ? e.status : 'null'));
-                return;
+        } catch (error) {
+            console.error('Error in renderValidationList:', error);
+            const validationList = document.getElementById('validationList');
+            if (validationList) {
+                validationList.innerHTML = `<p class="no-entries" style="color: red;">Error rendering entries: ${error.message}</p>`;
             }
+        }
+    }
 
-            console.log('Rendering', entries.length, 'entries');
-            validationList.innerHTML = entries.map(entry => {
-                if (!entry) {
-                    console.error('Null entry found during rendering!');
-                    return '';
+    createEntryHTML(entry) {
+        if (!entry) return '';
+        
+        const userName = entry.userName || entry.name || 'Unknown User';
+        const userEmail = entry.userEmail || entry.email || 'No email';
+        const userId = entry.userId || entry.id || 'unknown';
+        const steps = entry.steps || 0;
+        const entryDate = entry.date || new Date().toISOString();
+        const entryStatus = entry.status || 'pending';
+        
+        // Parse date safely
+        let date;
+        try {
+            date = new Date(entryDate);
+            if (isNaN(date.getTime())) date = new Date();
+        } catch (e) {
+            date = new Date();
+        }
+        
+        const statusClass = entryStatus === 'approved' ? 'approved' : entryStatus === 'rejected' ? 'rejected' : 'pending';
+        const statusIcon = entryStatus === 'approved' ? '✅' : entryStatus === 'rejected' ? '❌' : '⏳';
+        
+        // Format date safely
+        let formattedDate;
+        try {
+            formattedDate = date.toLocaleString();
+        } catch (e) {
+            formattedDate = entryDate;
+        }
+        
+        // Format validated date safely
+        let validatedDateStr = '';
+        if (entry.validatedAt) {
+            try {
+                const validatedDate = new Date(entry.validatedAt);
+                if (!isNaN(validatedDate.getTime())) {
+                    validatedDateStr = validatedDate.toLocaleString();
                 }
-            // Ensure all required fields exist with fallback values
+            } catch (e) {
+                validatedDateStr = entry.validatedAt;
+            }
+        }
+        
+        // Format modified date safely
+        let modifiedDateStr = '';
+        if (entry.lastModifiedAt) {
+            try {
+                const modifiedDate = new Date(entry.lastModifiedAt);
+                if (!isNaN(modifiedDate.getTime())) {
+                    modifiedDateStr = modifiedDate.toLocaleString();
+                }
+            } catch (e) {
+                modifiedDateStr = entry.lastModifiedAt;
+            }
+        }
+        
+        return `
+            <div class="validation-entry ${statusClass}">
+                <div class="entry-header">
+                    <div class="entry-info">
+                        <h4>${this.escapeHtml(userName)} (${this.escapeHtml(userEmail)})</h4>
+                        <p class="entry-date">${formattedDate}</p>
+                        <p class="entry-id" style="font-size: 0.8rem; color: #666;">Entry ID: ${entry.id || 'N/A'}</p>
+                        <p class="entry-user-id" style="font-size: 0.8rem; color: #666;">User ID: ${userId}</p>
+                    </div>
+                    <div class="entry-status ${statusClass}">
+                        ${statusIcon} ${entryStatus.toUpperCase()}
+                    </div>
+                </div>
+                <div class="entry-details">
+                    <div class="entry-steps">
+                        <strong>Steps:</strong> ${steps.toLocaleString()}
+                    </div>
+                    <div class="entry-screenshot">
+                        <strong>Screenshot:</strong>
+                        ${entry.screenshot ? `
+                            <img src="${entry.screenshot}" alt="Step screenshot" class="validation-screenshot" onclick="this.classList.toggle('expanded')" style="cursor: pointer; max-width: 200px; border-radius: 8px; margin-top: 8px;">
+                        ` : `
+                            <p class="no-screenshot">No screenshot provided (Step counter entry or manual entry without screenshot)</p>
+                        `}
+                    </div>
+                    ${entry.source ? `<div class="entry-source" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Source:</strong> ${entry.source === 'step-counter' ? 'Step Counter' : 'Manual Entry'}</div>` : ''}
+                    ${entry.validatedBy ? `<div class="entry-validator" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Validated by:</strong> ${this.escapeHtml(entry.validatedBy)}${validatedDateStr ? ` on ${validatedDateStr}` : ''}</div>` : ''}
+                    ${entry.lastModifiedBy ? `<div class="entry-modifier" style="margin-top: 8px; font-size: 0.9rem; color: #666;"><strong>Last modified by:</strong> ${this.escapeHtml(entry.lastModifiedBy)}${modifiedDateStr ? ` on ${modifiedDateStr}` : ''}</div>` : ''}
+                    ${entry.notes ? `<div class="entry-notes" style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; font-size: 0.9rem;"><strong>Notes:</strong> ${this.escapeHtml(entry.notes)}</div>` : ''}
+                </div>
+                <div class="entry-actions">
+                    ${entryStatus === 'pending' ? `
+                        <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Approve</button>
+                        <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject</button>
+                    ` : entryStatus === 'approved' ? `
+                        <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Re-approve</button>
+                        <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject</button>
+                    ` : entryStatus === 'rejected' ? `
+                        <button class="btn btn-success" onclick="app.validateEntry('${entry.id}', 'approved')">Approve</button>
+                        <button class="btn btn-danger" onclick="app.validateEntry('${entry.id}', 'rejected')">Reject Again</button>
+                    ` : ''}
+                    <button class="btn btn-edit" onclick="app.editEntrySteps('${entry.id}')">✏️ Edit Steps</button>
+                </div>
+            </div>
+        `;
+    }
             const userName = entry.userName || entry.name || 'Unknown User';
             const userEmail = entry.userEmail || entry.email || 'No email';
             const userId = entry.userId || entry.id || 'unknown';
@@ -3383,18 +3483,6 @@ Please keep this information secure.`;
                     </div>
                 </div>
             `;
-            }).filter(html => html).join(''); // Filter out empty strings
-            
-            console.log('Validation list rendered successfully');
-        } catch (error) {
-            console.error('Error in renderValidationList:', error);
-            console.error('Error stack:', error.stack);
-            const validationList = document.getElementById('validationList');
-            if (validationList) {
-                validationList.innerHTML = `<p class="no-entries" style="color: red;">Error rendering entries: ${error.message}. Check console for details.</p>`;
-            }
-        }
-    }
 
     escapeHtml(text) {
         if (!text) return '';
