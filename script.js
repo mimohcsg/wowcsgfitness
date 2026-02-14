@@ -2900,36 +2900,187 @@ Please keep this information secure.`;
         const dailyStepsCount = Object.keys(dailySteps).length;
         const streak = this.calculateStreak(user);
         
+        // Calculate activity statistics
+        const totalActivitySteps = userActivities.reduce((sum, a) => sum + (a.steps || 0), 0);
+        const approvedActivities = userActivities.filter(a => a.status === 'approved').length;
+        const pendingActivities = userActivities.filter(a => !a.status || a.status === 'pending').length;
+        const rejectedActivities = userActivities.filter(a => a.status === 'rejected').length;
+        const activitiesWithScreenshots = userActivities.filter(a => a.screenshot).length;
+        
         let activitiesHtml = '';
         if (userActivities.length > 0) {
-            activitiesHtml = '<div class="user-activities-section"><h3>📝 All Activities</h3><div class="activities-list">';
-            userActivities.forEach(activity => {
-                const date = new Date(activity.date).toLocaleDateString();
-                const time = new Date(activity.date).toLocaleTimeString();
+            activitiesHtml = `
+                <div class="user-activities-section">
+                    <h3>📝 Activity Details</h3>
+                    
+                    <!-- Activity Statistics Summary -->
+                    <div class="activity-stats-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <div class="stat-box">
+                            <div class="stat-value" style="font-size: 1.5rem; font-weight: bold; color: #003366;">${userActivities.length}</div>
+                            <div class="stat-label" style="font-size: 0.85rem; color: #666;">Total Entries</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" style="font-size: 1.5rem; font-weight: bold; color: #4caf50;">${approvedActivities}</div>
+                            <div class="stat-label" style="font-size: 0.85rem; color: #666;">✅ Approved</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" style="font-size: 1.5rem; font-weight: bold; color: #ff9800;">${pendingActivities}</div>
+                            <div class="stat-label" style="font-size: 0.85rem; color: #666;">⏳ Pending</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" style="font-size: 1.5rem; font-weight: bold; color: #f44336;">${rejectedActivities}</div>
+                            <div class="stat-label" style="font-size: 0.85rem; color: #666;">❌ Rejected</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" style="font-size: 1.5rem; font-weight: bold; color: #2196f3;">${totalActivitySteps.toLocaleString()}</div>
+                            <div class="stat-label" style="font-size: 0.85rem; color: #666;">Total Steps</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" style="font-size: 1.5rem; font-weight: bold; color: #9c27b0;">${activitiesWithScreenshots}</div>
+                            <div class="stat-label" style="font-size: 0.85rem; color: #666;">📷 With Screenshots</div>
+                        </div>
+                    </div>
+                    
+                    <div class="activities-list" style="max-height: 500px; overflow-y: auto;">
+            `;
+            
+            userActivities.forEach((activity, index) => {
+                const date = new Date(activity.date);
+                const dateStr = date.toLocaleDateString();
+                const timeStr = date.toLocaleTimeString();
                 const status = activity.status || 'pending';
                 const statusClass = status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'pending';
+                const statusIcon = status === 'approved' ? '✅' : status === 'rejected' ? '❌' : '⏳';
+                
+                // Format validation date if available
+                let validatedDateStr = '';
+                if (activity.validatedAt) {
+                    try {
+                        validatedDateStr = new Date(activity.validatedAt).toLocaleString();
+                    } catch (e) {
+                        validatedDateStr = activity.validatedAt;
+                    }
+                }
+                
+                // Format last modified date if available
+                let modifiedDateStr = '';
+                if (activity.lastModifiedAt) {
+                    try {
+                        modifiedDateStr = new Date(activity.lastModifiedAt).toLocaleString();
+                    } catch (e) {
+                        modifiedDateStr = activity.lastModifiedAt;
+                    }
+                }
+                
+                const sourceDisplay = activity.source === 'step-counter' ? 'Step Counter' : 
+                                     activity.source === 'manual' ? 'Manual Entry' : 
+                                     activity.source === 'screenshot' ? 'Screenshot Upload' : 
+                                     activity.source || 'Unknown';
                 
                 activitiesHtml += `
-                    <div class="activity-entry ${statusClass}">
-                        <div class="activity-header">
-                            <span class="activity-date">${date} ${time}</span>
-                            <span class="activity-status ${statusClass}">${status}</span>
+                    <div class="activity-entry ${statusClass}" style="border: 2px solid ${status === 'approved' ? '#4caf50' : status === 'rejected' ? '#f44336' : '#ff9800'}; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: white;">
+                        <div class="activity-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
+                            <div>
+                                <span class="activity-date" style="font-weight: bold; color: #003366; font-size: 1rem;">📅 ${dateStr} ${timeStr}</span>
+                                <div style="font-size: 0.85rem; color: #666; margin-top: 4px;">
+                                    Entry ID: <code style="background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 0.8rem;">${activity.id || 'N/A'}</code>
+                                </div>
+                            </div>
+                            <span class="activity-status ${statusClass}" style="padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 0.9rem; background: ${status === 'approved' ? '#e8f5e9' : status === 'rejected' ? '#ffebee' : '#fff3e0'}; color: ${status === 'approved' ? '#2e7d32' : status === 'rejected' ? '#c62828' : '#e65100'};">
+                                ${statusIcon} ${status.toUpperCase()}
+                            </span>
                         </div>
-                        <div class="activity-details">
-                            <strong>Steps:</strong> ${activity.steps.toLocaleString()}<br>
-                            <strong>Source:</strong> ${activity.source || 'manual'}<br>
-                            ${activity.notes ? `<strong>Notes:</strong> ${activity.notes}<br>` : ''}
-                            ${activity.screenshot ? '<span class="has-screenshot">📷 Has Screenshot</span>' : '<span class="no-screenshot">No Screenshot</span>'}
+                        <div class="activity-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                            <div class="detail-item">
+                                <strong style="color: #003366;">👣 Steps:</strong> 
+                                <span style="font-size: 1.1rem; font-weight: bold; color: #2196f3;">${(activity.steps || 0).toLocaleString()}</span>
+                            </div>
+                            <div class="detail-item">
+                                <strong style="color: #003366;">📱 Source:</strong> 
+                                <span>${sourceDisplay}</span>
+                            </div>
+                            ${activity.userName || activity.name ? `
+                                <div class="detail-item">
+                                    <strong style="color: #003366;">👤 User:</strong> 
+                                    <span>${this.escapeHtml(activity.userName || activity.name)}</span>
+                                </div>
+                            ` : ''}
+                            ${activity.userEmail || activity.email ? `
+                                <div class="detail-item">
+                                    <strong style="color: #003366;">📧 Email:</strong> 
+                                    <span>${this.escapeHtml(activity.userEmail || activity.email)}</span>
+                                </div>
+                            ` : ''}
                         </div>
-                        <div class="activity-actions">
-                            <button class="btn btn-small btn-secondary" onclick="app.deleteUserActivity('${activity.id}', '${actualUserId}')">Delete</button>
+                        
+                        ${activity.screenshot ? `
+                            <div class="screenshot-section" style="margin: 12px 0; padding: 12px; background: #f8f9fa; border-radius: 6px;">
+                                <strong style="color: #003366; display: block; margin-bottom: 8px;">📷 Screenshot:</strong>
+                                <img src="${activity.screenshot}" 
+                                     alt="Activity screenshot" 
+                                     class="activity-screenshot" 
+                                     onclick="this.style.maxWidth = this.style.maxWidth === '100%' ? '200px' : '100%'; this.style.cursor = 'pointer';"
+                                     style="max-width: 200px; border-radius: 6px; cursor: pointer; border: 2px solid #ddd; transition: all 0.3s ease;"
+                                     title="Click to enlarge">
+                                <div style="margin-top: 8px; font-size: 0.85rem; color: #666;">Click image to enlarge</div>
+                            </div>
+                        ` : `
+                            <div style="padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 0.9rem; color: #856404;">
+                                ⚠️ No screenshot provided
+                            </div>
+                        `}
+                        
+                        ${activity.notes ? `
+                            <div class="notes-section" style="margin: 12px 0; padding: 12px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196f3;">
+                                <strong style="color: #003366; display: block; margin-bottom: 6px;">📝 Notes:</strong>
+                                <div style="color: #555; white-space: pre-wrap;">${this.escapeHtml(activity.notes)}</div>
+                            </div>
+                        ` : ''}
+                        
+                        ${activity.validatedBy ? `
+                            <div class="validation-info" style="margin: 12px 0; padding: 10px; background: #f5f5f5; border-radius: 6px; font-size: 0.9rem;">
+                                <strong style="color: #003366;">✅ Validated by:</strong> ${this.escapeHtml(activity.validatedBy)}
+                                ${validatedDateStr ? ` on ${validatedDateStr}` : ''}
+                            </div>
+                        ` : ''}
+                        
+                        ${activity.lastModifiedBy ? `
+                            <div class="modification-info" style="margin: 12px 0; padding: 10px; background: #f5f5f5; border-radius: 6px; font-size: 0.9rem;">
+                                <strong style="color: #003366;">✏️ Last modified by:</strong> ${this.escapeHtml(activity.lastModifiedBy)}
+                                ${modifiedDateStr ? ` on ${modifiedDateStr}` : ''}
+                            </div>
+                        ` : ''}
+                        
+                        <div class="activity-actions" style="display: flex; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                            ${status === 'pending' ? `
+                                <button class="btn btn-small btn-success" onclick="app.validateEntry('${activity.id}', 'approved'); app.viewUserDetails('${actualUserId}');" title="Approve this entry">✅ Approve</button>
+                                <button class="btn btn-small btn-danger" onclick="app.validateEntry('${activity.id}', 'rejected'); app.viewUserDetails('${actualUserId}');" title="Reject this entry">❌ Reject</button>
+                            ` : status === 'approved' ? `
+                                <button class="btn btn-small btn-danger" onclick="app.validateEntry('${activity.id}', 'rejected'); app.viewUserDetails('${actualUserId}');" title="Reject this entry">❌ Reject</button>
+                            ` : status === 'rejected' ? `
+                                <button class="btn btn-small btn-success" onclick="app.validateEntry('${activity.id}', 'approved'); app.viewUserDetails('${actualUserId}');" title="Approve this entry">✅ Approve</button>
+                            ` : ''}
+                            <button class="btn btn-small btn-secondary" onclick="app.editEntrySteps('${activity.id}'); app.viewUserDetails('${actualUserId}');" title="Edit steps for this entry">✏️ Edit Steps</button>
+                            <button class="btn btn-small btn-danger" onclick="if(confirm('Are you sure you want to delete this activity?')) { app.deleteUserActivity('${activity.id}', '${actualUserId}'); }" title="Delete this activity">🗑️ Delete</button>
                         </div>
                     </div>
                 `;
             });
-            activitiesHtml += '</div></div>';
+            
+            activitiesHtml += `
+                    </div>
+                </div>
+            `;
         } else {
-            activitiesHtml = '<div class="user-activities-section"><h3>📝 All Activities</h3><p class="no-entries">No activities recorded yet.</p></div>';
+            activitiesHtml = `
+                <div class="user-activities-section">
+                    <h3>📝 Activity Details</h3>
+                    <div style="padding: 30px; text-align: center; background: #f8f9fa; border-radius: 8px; margin-top: 15px;">
+                        <p style="font-size: 1.1rem; color: #666; margin: 0;">No activities recorded yet.</p>
+                        <p style="font-size: 0.9rem; color: #999; margin-top: 8px;">This user hasn't submitted any step entries.</p>
+                    </div>
+                </div>
+            `;
         }
 
         content.innerHTML = `
@@ -4818,8 +4969,16 @@ Please keep this information secure.`;
 }
 
 // Initialize the app and make it globally accessible
-const app = new StepathonApp();
-window.app = app; // Make app accessible globally for onclick handlers
+try {
+    const app = new StepathonApp();
+    window.app = app; // Make app accessible globally for onclick handlers
+    console.log('StepathonApp initialized successfully');
+} catch (error) {
+    console.error('Error initializing StepathonApp:', error);
+    console.error('Error stack:', error.stack);
+    // Still set window.app to null so admin.html can detect the error
+    window.app = null;
+}
 
 // Debug helper functions (accessible from browser console)
 window.debugStepathon = {
