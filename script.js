@@ -55,11 +55,13 @@ class StepathonApp {
         // Use requestAnimationFrame for better performance
         if (!window.location.pathname.includes('admin.html')) {
             requestAnimationFrame(() => {
+                // Check challenge status immediately on page load
+                this.updateDates();
+                
                 this.checkCurrentUser();
                 // Defer heavy operations
                 setTimeout(() => {
                     this.updateLeaderboard();
-                    this.updateDates();
                 }, 100);
             });
         }
@@ -1185,7 +1187,7 @@ class StepathonApp {
         // Set end date to 14 days later (February 15, 2026)
         const endDate = new Date(startDate);
         endDate.setDate(endDate.getDate() + 14);
-        endDate.setHours(0, 0, 0, 0); // Normalize time
+        endDate.setHours(23, 59, 59, 999); // Set to end of day
 
         const startDateElement = document.getElementById('startDate');
         const endDateElement = document.getElementById('endDate');
@@ -1200,6 +1202,160 @@ class StepathonApp {
             endDateElement.textContent = formattedEnd;
             console.log('End date set to:', formattedEnd, endDate);
         }
+        
+        // Check if challenge is over and update UI
+        this.checkChallengeStatus(startDate, endDate);
+    }
+
+    isChallengeActive() {
+        // Set start date to February 1, 2026
+        const startDate = new Date(2026, 1, 1);
+        startDate.setHours(0, 0, 0, 0);
+        
+        // Set end date to 14 days later (February 15, 2026)
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 14);
+        endDate.setHours(23, 59, 59, 999);
+        
+        const now = new Date();
+        return now >= startDate && now <= endDate;
+    }
+
+    checkChallengeStatus(startDate, endDate) {
+        const now = new Date();
+        const isActive = now >= startDate && now <= endDate;
+        
+        // Show/hide challenge over message on main page (before login)
+        const mainPageMsg = document.getElementById('mainPageChallengeOverMessage');
+        if (mainPageMsg) {
+            mainPageMsg.style.display = isActive ? 'none' : 'block';
+        }
+        
+        // Show/hide challenge over message in dashboard (after login)
+        let challengeOverMsg = document.getElementById('challengeOverMessage');
+        if (!challengeOverMsg) {
+            // Create the message element if it doesn't exist
+            challengeOverMsg = document.createElement('div');
+            challengeOverMsg.id = 'challengeOverMessage';
+            challengeOverMsg.className = 'challenge-over-message';
+            
+            // Insert at the top of main-content
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+                mainContent.insertBefore(challengeOverMsg, mainContent.firstChild);
+            }
+        }
+        
+        if (!isActive) {
+            const formattedEnd = this.formatDate(endDate);
+            challengeOverMsg.innerHTML = `
+                <div style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); color: white; padding: 25px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(244, 67, 54, 0.3); text-align: center;">
+                    <div style="font-size: 2.5rem; margin-bottom: 15px;">🏁</div>
+                    <h2 style="margin: 0 0 10px 0; font-size: 1.8rem; font-weight: bold;">Challenge Has Ended</h2>
+                    <p style="margin: 0 0 15px 0; font-size: 1.1rem; opacity: 0.95;">
+                        The WoW-CSG Stepathon Challenge 2026 ended on <strong>${formattedEnd}</strong>.
+                    </p>
+                    <p style="margin: 0; font-size: 1rem; opacity: 0.9;">
+                        Thank you for participating! You can still view your progress and the leaderboard below.
+                    </p>
+                </div>
+            `;
+            challengeOverMsg.style.display = 'block';
+            
+            // Disable add steps section
+            this.disableAddStepsSection();
+        } else {
+            challengeOverMsg.style.display = 'none';
+            this.enableAddStepsSection();
+        }
+    }
+
+    disableAddStepsSection() {
+        // Disable the entire add steps section
+        const addStepsSection = document.querySelector('.add-steps-section');
+        if (addStepsSection) {
+            addStepsSection.style.opacity = '0.6';
+            addStepsSection.style.pointerEvents = 'none';
+            addStepsSection.style.position = 'relative';
+            
+            // Add overlay message
+            let overlay = addStepsSection.querySelector('.challenge-disabled-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'challenge-disabled-overlay';
+                overlay.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(255, 255, 255, 0.95);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 12px;
+                    z-index: 100;
+                    flex-direction: column;
+                    padding: 20px;
+                `;
+                overlay.innerHTML = `
+                    <div style="font-size: 3rem; margin-bottom: 15px;">🔒</div>
+                    <h3 style="margin: 0 0 10px 0; color: #f44336; font-size: 1.5rem;">Challenge Has Ended</h3>
+                    <p style="margin: 0; color: #666; text-align: center; max-width: 400px;">
+                        New step entries are no longer being accepted. The challenge ended on <strong>${this.formatDate(new Date(2026, 1, 15))}</strong>.
+                    </p>
+                `;
+                addStepsSection.style.position = 'relative';
+                addStepsSection.appendChild(overlay);
+            }
+        }
+        
+        // Disable all input methods
+        const methodTabs = document.querySelectorAll('.method-tab');
+        methodTabs.forEach(tab => {
+            tab.disabled = true;
+            tab.style.opacity = '0.5';
+            tab.style.cursor = 'not-allowed';
+        });
+        
+        // Disable forms
+        const addStepsForm = document.getElementById('addStepsForm');
+        if (addStepsForm) {
+            const inputs = addStepsForm.querySelectorAll('input, button');
+            inputs.forEach(input => input.disabled = true);
+        }
+        
+        const screenshotForm = document.getElementById('screenshotForm');
+        if (screenshotForm) {
+            const inputs = screenshotForm.querySelectorAll('input, button');
+            inputs.forEach(input => input.disabled = true);
+        }
+        
+        const stepCounterForm = document.getElementById('stepCounterForm');
+        if (stepCounterForm) {
+            const buttons = stepCounterForm.querySelectorAll('button');
+            buttons.forEach(btn => btn.disabled = true);
+        }
+    }
+
+    enableAddStepsSection() {
+        const addStepsSection = document.querySelector('.add-steps-section');
+        if (addStepsSection) {
+            addStepsSection.style.opacity = '1';
+            addStepsSection.style.pointerEvents = 'auto';
+            
+            const overlay = addStepsSection.querySelector('.challenge-disabled-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
+        
+        const methodTabs = document.querySelectorAll('.method-tab');
+        methodTabs.forEach(tab => {
+            tab.disabled = false;
+            tab.style.opacity = '1';
+            tab.style.cursor = 'pointer';
+        });
     }
 
     formatDate(date) {
@@ -2262,6 +2418,9 @@ Please keep this information secure.`;
         document.getElementById('loginCard').style.display = 'none';
         document.getElementById('dashboardCard').style.display = 'block';
         
+        // Check challenge status and disable features if challenge is over
+        this.updateDates(); // This will call checkChallengeStatus
+        
         this.updateDashboard();
     }
 
@@ -2478,6 +2637,12 @@ Please keep this information secure.`;
 
     async addSteps() {
         if (!this.currentUser) return;
+
+        // Check if challenge is still active
+        if (!this.isChallengeActive()) {
+            alert('The challenge has ended. New step entries are no longer being accepted.\n\nThank you for participating!');
+            return;
+        }
 
         const steps = parseInt(document.getElementById('stepsInput').value);
         if (isNaN(steps) || steps <= 0) {
@@ -4670,6 +4835,12 @@ Please keep this information secure.`;
     async saveCounterStepsDirectly() {
         if (!this.currentUser) {
             alert('Please login first!');
+            return;
+        }
+
+        // Check if challenge is still active
+        if (!this.isChallengeActive()) {
+            alert('The challenge has ended. New step entries are no longer being accepted.\n\nThank you for participating!');
             return;
         }
 
